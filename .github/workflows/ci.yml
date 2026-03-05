@@ -1,0 +1,39 @@
+name: Java CI with Maven and Testcontainers
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      # Docker ya está disponible en el runner, pero Testcontainers
+      # necesita que el demonio de Docker esté activo.
+      docker:
+        image: docker:dind
+        options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build and Test
+        # Esto ejecutará Flyway, Unit tests e Integration tests (Testcontainers)
+        run: mvn clean verify
+
+      - name: Publish Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: target/surefire-reports/*.xml
