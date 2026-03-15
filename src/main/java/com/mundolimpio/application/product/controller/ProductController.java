@@ -3,13 +3,33 @@ package com.mundolimpio.application.product.controller;
 import com.mundolimpio.application.product.dto.ProductRequest;
 import com.mundolimpio.application.product.dto.ProductResponse;
 import com.mundolimpio.application.product.service.ProductService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
+/*
+* ProductController expone los endpoinds para la gestion de productos.
+*
+* Mapeo:
+* POST   /api/v1/products              → Crear producto
+ * GET    /api/v1/products/{id}         → Obtener por ID
+ * GET    /api/v1/products/sku/{sku}    → Obtener por SKU
+ * GET    /api/v1/products              → Listar todos (activos)
+ * PUT    /api/v1/products/{id}         → Actualizar
+ * DELETE /api/v1/products/{id}         → Eliminar (soft delete)
+ * PATCH  /api/v1/products/{id}/reactivate → Reactivar*/
+
+
 @RestController
 @RequestMapping("/api/v1/products")
+@Tag(name = "Products", description = "Endpoints para la gestion del catalogo de productos")
 public class ProductController {
     // Inyectamos el servicer (Constructor injection)
 
@@ -19,20 +39,181 @@ public class ProductController {
         this.productService = productService;
     }
 
+    // ================================== CREATE =======================================
+
+    /*
+    * Crea un nuevo producto.
+    *
+    * @param request Los datos del producto (SKU, nombre, precio minimo)
+    * @return ProductResponse con el producto creado (2012 CREATED)
+    * */
+
     @PostMapping
-    public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
+    @Operation(
+            summary = "Create a new product",
+            description = "Creates a new product with unique SKU. SKU must containt only uppercase letters, numbers, and hyphens."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Product created successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request: validation failed (empty SKU, invalid price, etc)"),
+            @ApiResponse(responseCode = "409", description = "Conflict: Product with this SKU already exists")
+    })
+    public ResponseEntity<ProductResponse> createProduct(@Valid @RequestBody ProductRequest request) {
         // Llamamos al service y respondemos 201
 
             ProductResponse response = productService.createProduct(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/{sku}")
-    public ResponseEntity<ProductResponse> getBySku(@PathVariable String sku) {
+    // ========================= READ =========================
+
+    /*
+    * Obtiene un producto por su ID.
+    *
+    * @param id El identificador unico del producto
+    * @return ProductResponse con los datos del producto (200 OK)
+    * */
+
+    @GetMapping("/{id}")
+    @Operation(
+            summary = "Get product by ID",
+            description = "Retrieves a product using its unique identifier (ID)"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Product found"),
+            @ApiResponse(responseCode = "404", description = "Product not found with the given ID")
+    })
+    public ResponseEntity<ProductResponse> getProductById(@PathVariable Long id) {
+        ProductResponse response = productService.getProductById(id);
+        return ResponseEntity.ok(response);
+    }
+
+    /*
+    * Obtiene un producto por su SKU.
+    *
+    * @param sku El stock Keeping Unit unico del producto
+    * qreturn ProductResponse con los datos del producto (200 OK)
+    * */
+
+    @GetMapping("/sku/{sku}")
+    @Operation(
+            summary = "Get product by SKU",
+            description = "Retruieves a product using its unique SKU (Stock Keeping Unit)"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Product found"),
+            @ApiResponse(responseCode = "404", description = "Product not found with the given SKU")
+    })
+    public ResponseEntity<ProductResponse> getProductBySku(@PathVariable String sku) {
 
         ProductResponse response = productService.getBySku(sku);
 
         return ResponseEntity.ok(response);
+    }
+
+    /*
+    * Obtiene todos los productos activos.
+    * @return Lista de ProductResponse con productos activos (200 OK)
+    * */
+    @GetMapping
+    @Operation(
+            summary = "Get all active products",
+            description = "retrieves a list of all active products (active=true). " + "Useful for inventory management, FIFO operations, and sales."
+    )
+    @ApiResponse(responseCode = "200", description = "List of active products")
+    public ResponseEntity<List<ProductResponse>> getAllActiveProducts() {
+        List<ProductResponse> response = productService.getAllActiveProducts();
+        return ResponseEntity.ok(response);
+    }
+
+    /*
+    * Obtiene todos los productos (activos e inactivos).
+    *
+    * @return Lista de ProductResponse con todos los productos (200 OK)
+    * */
+    @GetMapping("/all")
+    @Operation(
+            summary = "Get all products (active and inactive)",
+            description = "Retrieves a complete list of all products, incluiding inactive ones. " + "Useful for administrative purpose and reporting."
+    )
+    @ApiResponse(responseCode = "200", description = "Complete list of products")
+    public ResponseEntity<List<ProductResponse>> getAllProducts() {
+        List<ProductResponse> response = productService.getAllProducts();
+        return ResponseEntity.ok(response);
+    }
+
+    // ======================= UPDATE =======================
+
+    /*
+    * Actualiza un producto existente.
+    *
+    * @param id El ID del producto a actualizar
+    * @param request Los nuevos datos del producto
+    * @return ProductResponse con el producto actualizado (200 OK)
+    * */
+
+    @PutMapping("/{id}")
+    @Operation(
+            summary = "Update an existing product",
+            description = "Updates all field of a product. " + "All fields are required."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Product update successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request: validation failed"),
+            @ApiResponse(responseCode = "404", description = "Product not found with the given ID"),
+            @ApiResponse(responseCode = "409", description = "Conflict: new SKU already exists in another product")
+    })
+    public ResponseEntity<ProductResponse> updateProduct(
+            @PathVariable Long id, @Valid @RequestBody ProductRequest request
+    ) {
+        ProductResponse response = productService.updateProduct(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    // ================================= DELETE ================================
+
+    /*
+    * Realiza un soft delete de un producto (marca como inactivo)
+    * No elimina el registro, solo marca active = false.
+    *
+    * Razon: Mantiene integridad referencial con production_batches y sales.
+    *
+    * @param id El ID del producto a eliminar (soft delete)
+    * @return 204 NO_CONTENT
+    * */
+    @DeleteMapping("/{id}")
+    @Operation(
+            summary = "Delete a product (soft delete)",
+            description = "Performs a soft delete: marks the product inactive (active =false). " +
+                    "The record is not deleted from the database, perserving data integrity " + "Use PATCH /reactivate to restore the product if needed."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Product marked as inactive successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found with the given ID")
+    })
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.deleteProductSoftDelete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /*
+    * Reactiva un producto marcado como inactivo.
+    *
+    * @param id El ID del producto a reactivar
+    * @return 204 NO_CONTENT
+    * */
+    @PatchMapping("/{id}/reactivate")
+    @Operation(
+            summary = "Reactivate an inactive product",
+            description = "Reverses a soft delete: marks the product as active (active=true). " + "This restores the product to the active product list."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Product reactivated successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found with the given ID")
+    })
+    public ResponseEntity<Void> reactivateProduct(@PathVariable Long id) {
+        productService.reactivateProduct(id);
+        return ResponseEntity.noContent().build();
     }
 }
 
