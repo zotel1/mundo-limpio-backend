@@ -8,11 +8,28 @@ package com.mundolimpio.application.product.mapper;
 * De esta forma, la lógica de conversion está centralizada y es reutilizable.*/
 
 import com.mundolimpio.application.product.domain.Product;
+import com.mundolimpio.application.product.dto.ProductRequest;
 import com.mundolimpio.application.product.dto.ProductResponse;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ProductMapper {
+
+    /*
+     * Convierte un DTO ProductRequest a una entidad Product.
+     * Usado al crear nuevos productos.
+     *
+     * @param request El DTO recibido desde el cliente
+     * @return Una entidad Product lista para ser persistida*/
+
+    public Product toEntity(ProductRequest request) {
+        Product product = new Product();
+        product.setSku(request.sku());
+        product.setName(request.name());
+        product.setMinPrice(request.minPrice());
+        product.setActive(true); // Por defecto, los productos se crean activos
+        return product;
+    }
 
     /*
     * Convierte una entidad Product a un DTO ProductResponse.
@@ -31,19 +48,5 @@ public class ProductMapper {
         );
     }
 
-    /*
-    * Convierte un DTO ProductRequest a una entidad Product.
-    * Usado al crear nuevos productos.
-    *
-    * @param request El DTO recibido desde el cliente
-    * @return Una entidad Product lista para ser persistida*/
 
-    public Product toEntity(ProductResponse request) {
-        Product product = new Product();
-        product.setSku(request.sku());
-        product.setName(request.name());
-        product.setMinPrice(request.minPrice());
-        product.setActive(true); // Por defecto, los productos se crean activos
-        return product;
-    }
 }
