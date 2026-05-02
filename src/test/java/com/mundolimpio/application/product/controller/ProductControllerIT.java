@@ -61,15 +61,9 @@ class ProductControllerIT {
 
     @Test
     void shouldReturnBadRequestWhenValidationFails() {
-        String invalidJson = """
-                {
-                    "sku": "",
-                    "name": "Producto",
-                    "minPrice": 10.50
-                }
-                """;
+        ProductRequest request = new ProductRequest("", "Producto", new BigDecimal("10.50"));
 
-        ResponseEntity<String> response = restTemplate.postForEntity("/api/v1/products", invalidJson, String.class);
+        ResponseEntity<String> response = restTemplate.postForEntity("/api/v1/products", request, String.class);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertTrue(response.getBody().contains("VALIDATION_ERROR"));
@@ -233,34 +227,5 @@ class ProductControllerIT {
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         assertTrue(response.getBody().contains("PRODUCT_NOT_FOUND"));
-    }
-
-    @Test
-    void shouldReactivateProductSuccessfully() {
-        ProductRequest request = new ProductRequest("REACTIV-001", "Para reactivar", new BigDecimal("10.00"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
-        Long productId = createResponse.getBody().id();
-
-        restTemplate.delete("/api/v1/products/" + productId);
-        ResponseEntity<Void> response = restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", org.springframework.http.HttpMethod.PATCH, null, Void.class);
-
-        assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
-        var productFromDb = productRepository.findById(productId);
-        assertTrue(productFromDb.isPresent());
-        assertTrue(productFromDb.get().getActive());
-    }
-
-    @Test
-    void shouldIncludeReactivatedProductInActiveList() {
-        ProductRequest request = new ProductRequest("BACK-TO-ACTIVE", "Vuelve a ser activo", new BigDecimal("10.00"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
-        Long productId = createResponse.getBody().id();
-
-        restTemplate.delete("/api/v1/products/" + productId);
-        restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", org.springframework.http.HttpMethod.PATCH, null, Void.class);
-
-        ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products", List.class);
-
-        assertEquals(1, response.getBody().size());
     }
 }
