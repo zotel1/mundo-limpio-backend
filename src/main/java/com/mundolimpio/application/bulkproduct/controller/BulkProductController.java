@@ -16,11 +16,21 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
+ * BulkProductController expone los endpoints para la gestión de materia prima.
  * BulkProductController expone los endpoints para la gestión de materia.
  *
  * Solo accesible por ADMIN.
  *
  * Mapeo:
+ * POST   /api/v1/bulk-products        → Crear materia prima
+ * GET    /api/v1/bulk-products        → Listar todas
+ * GET    /api/v1/bulk-products/{id}   → Obtener por ID
+ * PUT    /api/v1/bulk-products/{id}   → Actualizar
+ * DELETE /api/v1/bulk-products/{id}   → Eliminar
+ */
+@RestController
+@RequestMapping("/api/v1/bulk-products")
+@Tag(name = "Bulk Products", description = "Endpoints para la gestión de materia prima (ADMIN only)")
  * POST   /api/v1/bulk-products              → Crear materia prima
  * GET    /api/v1/bulk-products              → Listar todas
  * GET    /api/v1/bulk-products/{id}              → Obtener por ID
@@ -39,6 +49,8 @@ public class BulkProductController {
         this.service = service;
     }
 
+    /**
+     * Crea una nueva materia prima.
     // ========================= CREATE =========================
 
     /**
@@ -61,6 +73,8 @@ public class BulkProductController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    /**
+     * Obtiene todas las materias primas.
     // ========================= READ =========================
 
     /**
@@ -70,6 +84,7 @@ public class BulkProductController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Get all bulk products",
+            description = "Retrieves a list of all raw materials. Only ADMIN can access."
             description = "Retrieves a list of all raw materials. Only ADMINM can access. " +
                     "Useful for administrative purposes and reporting."
     )
@@ -79,12 +94,18 @@ public class BulkProductController {
     }
 
     /**
+     * Obtiene una materia prima por ID.
      * Obtiene una materia prima su ID.
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Get bulk product by ID",
+            description = "Retrieves a raw material using its unique identifier. Only ADMIN can access."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bulk product found"),
+            @ApiResponse(responseCode = "404", description = "Bulk product not found"),
             description = "Retrieves a raw material using its unique identifier (ID). Only ADMIN can Access."
     )
     @ApiResponses({
@@ -105,6 +126,7 @@ public class BulkProductController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Update a bulk product",
+            
             description = "Updates an existing raw naterial. All fiels are required. Only ADMIN can access."
     )
     @ApiResponses({
