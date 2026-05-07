@@ -17,6 +17,7 @@ import java.util.List;
 
 /**
  * BulkProductController expone los endpoints para la gestión de materia prima.
+ * BulkProductController expone los endpoints para la gestión de materia.
  *
  * Solo accesible por ADMIN.
  *
@@ -30,6 +31,16 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/bulk-products")
 @Tag(name = "Bulk Products", description = "Endpoints para la gestión de materia prima (ADMIN only)")
+ * POST   /api/v1/bulk-products              → Crear materia prima
+ * GET    /api/v1/bulk-products              → Listar todas
+ * GET    /api/v1/bulk-products/{id}              → Obtener por ID
+ * PUT    /api/v1/bulk-products/{id}              → Actualizar
+ * DELETE /api/v1/bulk-products/{id}              → Eliminar (soft delete)
+ *
+ */
+@RestController
+@RequestMapping("/api/v1/bulk-products")
+@Tag(name = "Bulk Products", description = "Endpoints para la gestión de la materia prima (ADMIN only)")
 public class BulkProductController {
 
     private final BulkProductService service;
@@ -40,12 +51,17 @@ public class BulkProductController {
 
     /**
      * Crea una nueva materia prima.
+    // ========================= CREATE =========================
+
+    /**
+     * Crea una nueva materia prima.
+     *
      */
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Create a new bulk product",
-            description = "Creates a new raw material with name, stock, cost and conversion ratio. Only ADMIN can access."
+            description = "Creates a new raw material with name, stok, cost and conversion ratio. Only ADMIN can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Bulk product created successfully"),
@@ -59,12 +75,18 @@ public class BulkProductController {
 
     /**
      * Obtiene todas las materias primas.
+    // ========================= READ =========================
+
+    /**
+     * Obtiene todos las materias primas.
      */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Get all bulk products",
             description = "Retrieves a list of all raw materials. Only ADMIN can access."
+            description = "Retrieves a list of all raw materials. Only ADMINM can access. " +
+                    "Useful for administrative purposes and reporting."
     )
     @ApiResponse(responseCode = "200", description = "List of bulk products")
     public ResponseEntity<List<BulkProductResponse>> getAllBulkProducts() {
@@ -73,6 +95,7 @@ public class BulkProductController {
 
     /**
      * Obtiene una materia prima por ID.
+     * Obtiene una materia prima su ID.
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -83,11 +106,18 @@ public class BulkProductController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Bulk product found"),
             @ApiResponse(responseCode = "404", description = "Bulk product not found"),
+            description = "Retrieves a raw material using its unique identifier (ID). Only ADMIN can Access."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bulk Product found"),
+            @ApiResponse(responseCode = "404", description = "Bulk Product not found"),
             @ApiResponse(responseCode = "403", description = "Forbidden: Only ADMIN can access")
     })
     public ResponseEntity<BulkProductResponse> getBulkProductById(@PathVariable Long id) {
         return ResponseEntity.ok(service.getBulkProductById(id));
     }
+
+    // ========================= UPDATE =========================
 
     /**
      * Actualiza una materia prima existente.
@@ -96,7 +126,8 @@ public class BulkProductController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Update a bulk product",
-            description = "Updates an existing raw material. All fields are required. Only ADMIN can access."
+            
+            description = "Updates an existing raw naterial. All fiels are required. Only ADMIN can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Bulk product updated successfully"),
@@ -111,9 +142,11 @@ public class BulkProductController {
         return ResponseEntity.ok(service.updateBulkProduct(id, request));
     }
 
+    // ========================= DELETE =========================
+
     /**
-     * Elimina una materia prima.
-     * Nota: Solo debería eliminarse si no tiene lotes asociados.
+     * Elimina una materia prima
+     * Solo deberia eliminarse si no tiene loteas asociados
      */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -125,7 +158,7 @@ public class BulkProductController {
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Bulk product deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Bulk product not found"),
-            @ApiResponse(responseCode = "403", description = "Forbidden: Only ADMIN can access")
+            @ApiResponse(responseCode = "403", description = "Forbidden: Only ADMIN  can access")
     })
     public ResponseEntity<Void> deleteBulkProduct(@PathVariable Long id) {
         service.deleteBulkProduct(id);

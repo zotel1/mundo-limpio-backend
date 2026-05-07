@@ -1,20 +1,18 @@
 package com.mundolimpio.application.bulkproduct.domain;
 
 import jakarta.persistence.*;
+
 import java.math.BigDecimal;
 
-/**
- * Entity representing raw material in inventory.
- *
- * The conversionRatio indicates how much finished product you get
- * per liter of raw material:
- * - Cloro: 1L pure → 4L lavandina ready (ratio = 4)
- * - Detergent: 1L base → 3L detergent ready (ratio = 3)
- * - Deodorant: 1L base → 80L deodorant ready (ratio = 80)
- * - Soap: 1L → 1L (ratio = 1, no dilution)
- */
+/*Wl conversionRatio indica cuanto producto al final se obtiene
+* por cada litro de materia prima:
+* - Cloro: 1L puro -> 4L lavandina lista (ratio = 4)
+* - Detergente: 1L base -> 3L detergente listo )ratio = 3)
+* - Desodorante: 1L base -> 80L desodorante listo (ratio = 80)
+* - Jabon: 1L -> 1L (ratio = 1, no se diluye)*/
+
 @Entity
-@Table(name = "bulk_products")
+@Table(name = "bulkproducts")
 public class BulkProduct {
 
     @Id
@@ -30,20 +28,19 @@ public class BulkProduct {
     @Column(nullable = false, name = "cost_per_liter")
     private BigDecimal costPerLiter;
 
-    /**
-     * Conversion ratio: how much finished product per 1L raw material.
-     * Example: 4 means 1L pure chlorine yields 4L ready lavandina.
-     */
+    /*
+    * Ratio de conversion: cuanto producto final obtienes por 1L de materia prima.
+    * Ejemplo: 4 significa que 1L de cloro puro rinde 4L de lavandina.*/
+
     @Column(nullable = false, name = "conversion_ratio")
     private BigDecimal conversionRatio;
 
     @Version
     private Long version;
 
-    public BulkProduct() {
-    }
+    public BulkProduct() {}
 
-    public BulkProduct(Long id, String name, BigDecimal currentStockLiters, BigDecimal costPerLiter, BigDecimal conversionRatio) {
+    public BulkProduct(Long id, String name,  BigDecimal currentStockLiters, BigDecimal costPerLiter, BigDecimal conversionRatio ) {
         this.id = id;
         this.name = name;
         this.currentStockLiters = currentStockLiters;

@@ -3,15 +3,18 @@ package com.mundolimpio.application.bulkproduct.controller;
 import com.mundolimpio.application.bulkproduct.dto.BulkProductRequest;
 import com.mundolimpio.application.bulkproduct.dto.BulkProductResponse;
 import com.mundolimpio.application.bulkproduct.repository.BulkProductRepository;
+import com.mundolimpio.application.security.service.JwtService;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
 import com.mundolimpio.application.user.repository.UserRepository;
-import com.mundolimpio.application.security.service.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -21,11 +24,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Test de Integración (E2E) para BulkProductController.
- *
- * Usa H2 en memoria (perfil "test").
- * Levanta todo el contexto de Spring Boot.
- * Crea un usuario ADMIN y obtiene JWT para las peticiones.
+ * Test de Integración para ProductController con CRUD Completo
+ * Usa H2 en memoria para tests (sin Docker/Testcontainers)
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -38,7 +38,7 @@ class BulkProductControllerIT {
     private BulkProductRepository bulkProductRepository;
 
     @Autowired
-    private UserRepository userRepository;
+    private UserRepository  userRepository;
 
     @Autowired
     private JwtService jwtService;
@@ -47,14 +47,15 @@ class BulkProductControllerIT {
 
     @BeforeEach
     void setUp() {
+
         bulkProductRepository.deleteAll();
         userRepository.deleteAll();
 
-        // Creamos un usuario ADMIN directo en la BD
+        // Creamos un usuario admin direecto en la BD
         User admin = new User("admin_test", "$2a$10$encodedPassword", Role.ADMIN);
         userRepository.save(admin);
 
-        // Generamos el JWT token manualmente
+        // Generamios el JWT manuakmente
         String token = jwtService.generateToken(admin);
         adminHeaders = new HttpHeaders();
         adminHeaders.setBearerAuth(token);
@@ -93,7 +94,7 @@ class BulkProductControllerIT {
                 "Cloro Puro", new BigDecimal("20.00"), new BigDecimal("5.50"), new BigDecimal("4.0")
         );
         BulkProductRequest request2 = new BulkProductRequest(
-                "Detergente Base", new BigDecimal("20.00"), new BigDecimal("8.00"), new BigDecimal("3.0")
+                "Detergente Base",  new BigDecimal("20.00"), new BigDecimal("8.00"), new BigDecimal("3.0")
         );
 
         restTemplate.exchange("/api/v1/bulk-products", HttpMethod.POST, getRequestEntity(request1), BulkProductResponse.class);
@@ -114,12 +115,13 @@ class BulkProductControllerIT {
     @Test
     void shouldGetBulkProductById() {
         BulkProductRequest request = new BulkProductRequest(
-                "Desodorante Base", new BigDecimal("10.00"), new BigDecimal("12.00"), new BigDecimal("80.0")
+                "Desodorante Base",   new BigDecimal("10.00"), new BigDecimal("12.00"), new BigDecimal("80.0")
         );
 
         ResponseEntity<BulkProductResponse> createResponse = restTemplate.exchange(
-                "/api/v1/bulk-products", HttpMethod.POST, getRequestEntity(request), BulkProductResponse.class
+                "/api/v1/bulk-products",  HttpMethod.POST, getRequestEntity(request), BulkProductResponse.class
         );
+
         Long id = createResponse.getBody().id();
 
         ResponseEntity<BulkProductResponse> response = restTemplate.exchange(
@@ -128,15 +130,12 @@ class BulkProductControllerIT {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals("Desodorante Base", response.getBody().name());
-        // BigDecimal comparison: use compareTo because 80.0 != 80.00 in scale
-        assertEquals(0, new BigDecimal("80.0").compareTo(response.getBody().conversionRatio()));
+        assertEquals(0, new BigDecimal("80.00").compareTo(response.getBody().conversionRatio()));
     }
 
     @Test
     void shouldReturnNotFoundForNonExistentId() {
-        ResponseEntity<String> response = restTemplate.exchange(
-                "/api/v1/bulk-products/999999", HttpMethod.GET, getRequestEntity(null), String.class
-        );
+        ResponseEntity<String> response = restTemplate.getForEntity("/api/v1/products/999999", String.class);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
     }
@@ -165,15 +164,18 @@ class BulkProductControllerIT {
         assertEquals(new BigDecimal("200.00"), response.getBody().currentStockLiters());
     }
 
+
+
     @Test
     void shouldDeleteBulkProduct() {
         BulkProductRequest request = new BulkProductRequest(
-                "Para Borrar", new BigDecimal("50.00"), new BigDecimal("10.00"), new BigDecimal("1.0")
+                 "Para borrar", new BigDecimal("50.00"), new BigDecimal("10.00"), new BigDecimal("1.0")
         );
 
         ResponseEntity<BulkProductResponse> createResponse = restTemplate.exchange(
                 "/api/v1/bulk-products", HttpMethod.POST, getRequestEntity(request), BulkProductResponse.class
         );
+
         Long id = createResponse.getBody().id();
 
         ResponseEntity<Void> response = restTemplate.exchange(
@@ -183,4 +185,5 @@ class BulkProductControllerIT {
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
         assertFalse(bulkProductRepository.existsById(id));
     }
+
 }
