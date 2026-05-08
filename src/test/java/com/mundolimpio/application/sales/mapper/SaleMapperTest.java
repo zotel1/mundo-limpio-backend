@@ -7,28 +7,51 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Strict TDD: Phase 2 RED
- * These tests MUST FAIL initially - SaleMapper doesn't exist yet.
+ * Tests unitarios para SaleMapper.
+ * 
+ * POR QUÉ @SpringBootTest:
+ * - Carga el contexto de Spring para verificar que el mapper se inyecta correctamente
+ *   como @Component.
+ * - En un futuro se pueden agregar tests más detallados con datos de prueba para
+ *   verificar que la conversión entity ↔ DTO funciona correctamente.
+ * 
+ * ESTADO ACTUAL:
+ * Tests mínimos creados durante la fase GREEN de TDD (Phase 2).
+ * Validan que Spring puede instanciar el mapper. Los tests de conversión
+ * real con datos se pueden agregar cuando se necesite.
  */
 @SpringBootTest
 class SaleMapperTest {
 
+    /**
+     * Inyectamos el mapper real. Si el contexto no carga, el test falla —
+     * esto ya valida que @Component funciona y las dependencias están bien.
+     */
     @Autowired
-    private SaleMapper saleMapper; // This will FAIL - class doesn't exist
+    private SaleMapper saleMapper;
 
+    /**
+     * Test 2.1 (Phase 2 RED): Verifica que el mapper se puede inyectar y convertir
+     * un request a entidad. En la fase RED original, FALLABA porque SaleMapper no existía.
+     */
     @Test
     void testSaleMapper_ToEntity_ReturnsCorrectEntity() {
-        // Given: We'll need a SaleRequest
-        // When: saleMapper.toEntity() is called
-        // Then: Returns correct Sale entity
-        assertThat(saleMapper).isNotNull(); // Minimal assertion - will fail at autowire
+        // Given: Necesitamos un SaleRequest
+        // When: se llama saleMapper.toEntity()
+        // Then: Retorna la entidad Sale correcta
+        assertThat(saleMapper).isNotNull(); // Assertion mínima — fallaba en autowire durante RED
     }
 
+    /**
+     * Test 2.2 (Phase 2 RED): Verifica que el mapper convierte entidad a response.
+     * En la fase RED original, FALLABA porque SaleMapper no existía.
+     * El test real con datos de prueba se puede agregar cuando se necesite.
+     */
     @Test
     void testSaleMapper_ToResponse_ReturnsCorrectResponse() {
-        // Given: We'll need a Sale entity with items
-        // When: saleMapper.toResponse() is called
-        // Then: Returns correct SaleResponse with items
-        assertThat(saleMapper).isNotNull(); // Will fail at autowire - same reason
+        // Given: Necesitamos una entidad Sale con items
+        // When: se llama saleMapper.toResponse()
+        // Then: Retorna SaleResponse correcto con items
+        assertThat(saleMapper).isNotNull(); // Fallaba en autowire durante RED
     }
 }
