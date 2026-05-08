@@ -1,7 +1,7 @@
 # Guía de Estudio - Mundo Limpio Backend
 
 > **Propósito**: Archivo vivo con todos los conceptos técnicos sugeridos durante el desarrollo del proyecto.  
-> **Actualizado**: 2026-05-07  
+> **Actualizado**: 2026-05-08 (Sales Module completo - Phase 6)  
 > **Mantenido por**: Gentle AI (big-pickle) + zotel1
 
 ---
@@ -209,6 +209,12 @@ Implementación: ordenar lotes por `productionDate` ascendente, iterar hasta cub
 ### 5.7 FIFO Race Conditions
 Condiciones de carrera en FIFO: múltiples ventas simultáneas. Mitigación: `@Version` (Optimistic Locking).
 
+### 5.8 Snapshot Pattern
+Guardar valores en el momento exacto de la transacción. Ej: `unitCostAtSale` en `SaleItem` guarda el costo del lote al momento de la venta. Si el costo del lote cambia después, el registro histórico no se altera. Esencial para contabilidad y auditoría.
+
+### 5.9 Atomicity (@Transactional)
+`@Transactional` garantiza que todas las operaciones dentro del método se ejecutan como una unidad atómica: o todas se commitean o ninguna. Si una excepción ocurre, se hace rollback automático. Sin esto, una venta fallida podría dejar stock inconsistente.
+
 ---
 
 ## 6. Testing
@@ -264,10 +270,39 @@ Pruebas de toda la aplicación: desde el frontend hasta la base de datos.
 ### 6.9 SaleService Logic
 Lógica de negocio para ventas:
 1. Validar stock disponible
-2. Obtener lotes FIFO (`findAllWithStockForFifo`)
+2. Obtener lotes FIFO (`findByProductIdAndCurrentStockGreaterThanOrderByProductionDateAsc`)
 3. Iterar lotes restando `currentStock`
 4. Crear `Sale` y `SaleItem`
 5. Guardar todo en `@Transactional`
+
+### 6.10 Integration Tests con JWT
+Patrón para tests de integración con autenticación:
+```java
+@BeforeEach
+void setUp() {
+    User admin = new User("admin_test", "password", Role.ADMIN);
+    userRepository.save(admin);
+    String token = jwtService.generateToken(admin);
+    adminHeaders = new HttpHeaders();
+    adminHeaders.setBearerAuth(token);
+}
+```
+**Importante**: Crear usuario con password en texto plano funciona en tests porque Spring no valida la password en JWT (solo el username). En producción, la password DEBE estar hasheada con BCrypt.
+
+### 6.11 Security Integration Test Matrix
+Tests esenciales para cualquier endpoint protegido:
+| Test | Qué verifica | Status HTTP |
+|------|--------------|-------------|
+| Sin token | Spring Security bloquea | 401 |
+| Token con rol incorrecto | @PreAuthorize bloquea | 403 |
+| Token correcto + datos válidos | Endpoint funciona | 201/200 |
+| Token correcto + datos inválidos | Validación de negocio | 400 |
+
+### 6.12 Atomicity Testing
+Verificar que operaciones fallidas NO modifican el estado:
+1. Crear dato con valor conocido (stock = 5)
+2. Intentar operación inválida (vender 100)
+3. Verificar que el dato NO cambió (stock sigue = 5)
 
 ---
 
@@ -287,6 +322,23 @@ Limitar cantidad de requests por IP/usuario en un tiempo determinado.
 
 ### 7.5 BCryptPasswordEncoder
 Algoritmo de hashing para passwords: `new BCryptPasswordEncoder()`.
+
+### 7.6 HttpStatusEntryPoint
+Spring Security retorna 403 por defecto para requests no autenticados. Para APIs REST, necesitás 401. Solución:
+```java
+.exceptionHandling(ex -> ex
+    .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+)
+```
+**Bug crítico descubierto**: `JwtAuthenticationFilter` tenía `if (username == null && ...)` en vez de `if (username != null && ...)`. La autenticación JWT NO funcionaba desde el inicio.
+
+### 7.7 GlobalExceptionHandler para Seguridad
+Excepciones de seguridad que deben tener handlers:
+- `AccessDeniedException` → 403 Forbidden (usuario autenticado pero sin permiso)
+- `IllegalArgumentException` → 400 Bad Request (validación de negocio, ej: stock insuficiente)
+- `OptimisticLockingFailureException` → 409 Conflict (concurrencia detectada por @Version)
+
+Sin estos handlers, las excepciones caen como 500 Internal Server Error — incorrecto para REST.
 
 ---
 
@@ -354,12 +406,22 @@ Monitoreo y dashboards. Prometheus recolecta métricas, Grafana las visualiza.
 No borrar físicamente: usar campo `active = false`. Mantiene integridad referencial.
 
 ### 10.2 Sales Module Domain
-Entidades: `Sale` (id, totalAmount, createdAt) y `SaleItem` (id, sale, productionBatch, quantity, unitPriceAtSale, unitCostAtSale).
+Entidades: `Sale` (id, totalAmount, createdAt, @Version) y `SaleItem` (id, sale, productionBatchId, quantity, unitPriceAtSale, unitCostAtSale). Relación bidireccional con `cascade = ALL, orphanRemoval = true`.
 
-### 10.3 Sales Module Endpoints (propuestos)
-- POST `/api/v1/sales` → Registrar venta (FIFO)
-- GET `/api/v1/sales` → Listar ventas
-- GET `/api/v1/sales/{id}` → Obtener por ID
+### 10.3 Sales Module Endpoints (implementados)
+- POST `/api/v1/sales` → Registrar venta (FIFO) ✅ IMPLEMENTADO - ADMIN only
+- GET `/api/v1/sales` → Listar ventas ❌ Pendiente
+- GET `/api/v1/sales/{id}` → Obtener por ID ❌ Pendiente
+
+### 10.5 Sales Module - Critical Bugs Found
+1. **JWT Filter Bug**: `username == null` en vez de `!= null` — la autenticación no funcionaba
+2. **401 vs 403**: Spring retorna 403 por defecto — necesitaba HttpStatusEntryPoint
+3. **Missing Exception Handlers**: IllegalArgumentException, AccessDeniedException, OptimisticLockingFailureException caían como 500
+
+### 10.6 Sales Module - Integration Tests
+8 tests implementados en `SaleControllerIT`:
+- 401 No Token, 403 As Operator, 201 Success, 400 Insufficient Stock
+- FIFO Multiple Batches, Partial Deduction, Failed Sale Stock Not Modified, Optimistic Locking
 
 ### 10.4 Inventory Module (futuro)
 Gestión de stock de productos envasados. Diferencia: `production_batches` (lotes) vs `inventory` (stock final).
@@ -595,7 +657,20 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 
 > **Nota**: Esta sección se completará automáticamente cuando sugiera nuevos conceptos en futuras sesiones.
 
+### ✅ Completados en esta sesión:
+- [x] Integration Tests con JWT y Spring Security
+- [x] Snapshot Pattern (costo al momento de venta)
+- [x] Atomicity testing (@Transactional rollback)
+- [x] HttpStatusEntryPoint para 401 responses
+- [x] GlobalExceptionHandler para seguridad (400, 403, 409)
+- [x] FIFO con múltiples lotes (complejo)
+- [x] Optimistic Locking verification
+- [x] Bidirectional JPA relationships con helper methods
+
+### Pendientes:
 - [ ] Pagination (paginación en endpoints GET)
+- [ ] Caching with Redis
+- [ ] Aspect-Oriented Programming (@Aspect)
 - [ ] Caching with Redis
 - [ ] Aspect-Oriented Programming (@Aspect)
 - [ ] Saga Pattern (para transacciones distribuidas) - YA EXPLICADO EN 3.8
@@ -604,7 +679,7 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 - [ ] Factory Pattern (creación de objetos) - YA EXPLICADO EN 3.3
 - [ ] Facade Pattern (interfaz simplificada) - YA EXPLICADO EN 3.9
 - [ ] DTO vs DAO vs VO (diferencias)
-- [ ] Jakarta Validation (@NotBlank, @NotNull, @Positive)
+- [x] Jakarta Validation (@NotBlank, @NotNull, @Positive) - EXPLICADO EN 11.39
 - [ ] OpenAPI/Swagger annotations (@Operation, @ApiResponse)
 - [ ] Spring Security Filter Chain
 - [ ] JWT Structure (Header, Payload, Signature)
@@ -626,6 +701,10 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 - [ ] Bulkhead Pattern
 - [ ] Retry Pattern
 - [ ] Timeout Pattern
+- [x] Bidirectional JPA relationships - EXPLICADO EN 4.15
+- [x] Cascade Types (ALL, orphanRemoval) - EXPLICADO EN 4.16
+- [x] Snapshot Pattern for financial records - NUEVO EN 5.8
+- [x] Atomicity testing with @Transactional - NUEVO EN 5.9
 
 ---
 
