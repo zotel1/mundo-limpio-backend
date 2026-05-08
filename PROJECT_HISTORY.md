@@ -201,6 +201,68 @@ Los lotes mantienen `currentStock` para implementar FIFO (First In, First Out) e
 **Decisión de diseño - Optimistic Locking:**
 El campo `@Version` en ProductionBatch previene condiciones de carrera al producir o vender.
 
+### Fase 5: Módulo de Ventas (Mayo 2026)
+
+#### Branch: `feature/sales`
+
+**Lo que se implementó:**
+
+1. **Domain** (`Sale.java`, `SaleItem.java`)
+   - Entidad Sale con id, totalAmount, createdAt, @Version
+   - Entidad SaleItem con snapshot del lote (productionBatchId, quantity, unitPriceAtSale, unitCostAtSale)
+   - Relación bidireccional con cascade = ALL, orphanRemoval = true
+   - Soft delete no aplica en ventas (registro permanente de auditoría)
+
+2. **Repository** (`SaleRepository`, `SaleItemRepository`)
+   - Spring Data JPA con JpaRepository
+   - Queries derivadas para futuras búsquedas
+
+3. **DTOs** (`SaleRequest`, `SaleResponse`, `SaleItemResponse`)
+   - SaleRequest: productId + quantity (BigDecimal para fracciones)
+   - Validaciones Jakarta: @NotNull, @Positive
+   - Java Records para inmutabilidad
+
+4. **Mapper** (`SaleMapper`)
+   - Conversión Entity → DTO (toResponse)
+   - Conversión manual (sin MapStruct)
+
+5. **Service** (`SaleService`)
+   - **Lógica FIFO completa**: descuenta stock del lote más antiguo primero
+   - Si un lote no alcanza, complementa con el siguiente
+   - Validación de stock antes de procesar
+   - @Transactional: atomicidad (todo o nada)
+   - Manejo de OptimisticLockingFailureException
+
+6. **Controller** (`SaleController`)
+   - POST `/api/v1/sales` (ADMIN only)
+   - @PreAuthorize("hasRole('ADMIN')")
+   - Documentación OpenAPI completa
+   - Retorna 201 Created con SaleResponse
+
+7. **Security & Exception Handling** (fixes del sistema)
+   - **BUG CRÍTICO FIX**: JwtAuthenticationFilter tenía `username == null` en vez de `!= null` — la autenticación JWT no funcionaba
+   - HttpStatusEntryPoint(UNAUTHORIZED) en SecurityConfig para respuestas REST correctas
+   - GlobalExceptionHandler: IllegalArgumentException (400), AccessDeniedException (403), OptimisticLockingFailureException (409)
+
+8. **Tests** (`SaleControllerIT` — 8 tests)
+   - 401: Sin token → rechazado
+   - 403: Operator → rechazado
+   - 201: Venta exitosa con stock
+   - 400: Stock insuficiente
+   - FIFO con múltiples lotes (oldest first)
+   - Deducción parcial (stock restante verificado)
+   - Venta fallida no modifica stock (atomicidad)
+   - Optimistic locking version detection
+
+**Decisión de diseño - Costo = Precio de venta:**
+Actualmente el precio de venta usa el costo unitario del lote (`getUnitCostAtProduction()`). Esto es temporal — en el futuro se necesita un campo de precio de venta separado en el producto para calcular márgenes de ganancia reales.
+
+**Decisión de diseño - Snapshot de costo:**
+Cada SaleItem guarda `unitCostAtSale` como snapshot del costo en el momento de la venta. Si el costo del lote cambia después, el registro de venta no se altera. Esto es esencial para contabilidad y auditoría.
+
+**Decisión de diseño - Optimistic Locking en Sales:**
+El @Version en ProductionBatch protege contra condiciones de carrera. Si dos ventas concurrentes intentan descontar del mismo lote, la segunda recibe 409 Conflict.
+
 ---
 
 ## Arquitectura
@@ -237,6 +299,18 @@ src/main/java/com/mundolimpio/application/
 │   ├── dto/ProductionBatchRequest.java
 │   ├── dto/ProductionBatchResponse.java
 │   └── mapper/ProductionBatchMapper.java
+│
+├── sales/                               # Módulo Ventas (FIFO)
+│   ├── domain/Sale.java                # Entidad con @Version
+│   ├── domain/SaleItem.java            # Item con snapshot de costo
+│   ├── repository/SaleRepository.java
+│   ├── repository/SaleItemRepository.java
+│   ├── service/SaleService.java        # Lógica FIFO + @Transactional
+│   ├── controller/SaleController.java   # POST /api/v1/sales (ADMIN)
+│   ├── dto/SaleRequest.java            # productId, quantity
+│   ├── dto/SaleResponse.java           # id, totalAmount, items
+│   ├── dto/SaleItemResponse.java       # batchId, quantity, costs
+│   └── mapper/SaleMapper.java
 │
 ├── user/                                # Módulo Usuarios
 │   ├── domain/User.java
@@ -296,6 +370,20 @@ production_batches
 ├── raw_quantity_used (DECIMAL)
 ├── production_date (TIMESTAMP)
 └── version (BIGINT, para @Version)
+
+sales
+├── id (PK, AUTO_INCREMENT)
+├── total_amount (DECIMAL)
+├── created_at (TIMESTAMP)
+└── version (BIGINT, para @Version)
+
+sale_items
+├── id (PK, AUTO_INCREMENT)
+├── sale_id (FK → sales.id)
+├── production_batch_id (FK)
+├── quantity (INTEGER)
+├── unit_price_at_sale (DECIMAL)
+└── unit_cost_at_sale (DECIMAL)
 ```
 
 ---
@@ -425,21 +513,23 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] Módulo Lotes de Producción (CRUD + tests)
 - [x] Autenticación JWT (registro + login)
 - [x] RBAC con roles ADMIN/OPERATOR
+- [x] **Módulo de Ventas (FIFO + @Version + 8 integration tests)**
 
 ### Módulos en Progreso 🚧
-- [ ] Módulo de Ventas (branch `feature/sales` - pendiente)
-- [ ] Documentación de API con OpenAPI (parcial)
+- [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales)
 
 ### Tests
-- **Unit tests**: `ProductionBatchServiceTest`
-- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`
+- **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`
+- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests)
+- **Total tests passing**: 10 unit tests + 8 integration tests (verificados individualmente)
 - **Coverage**: Pendiente configurar JaCoCo reports
 
 ### Branches Actuales
 ```
 main (producción)
 ├── develop (integración)
-    ├── feature/production-batches (actual - casi completo)
+    ├── feature/sales (actual - Phase 5 COMPLETE, Phase 6 pendiente)
+    ├── feature/production-batches (completado)
     ├── feature/bulk-products (completado)
     └── feature/product-module (completado)
 ```
@@ -544,24 +634,23 @@ main (producción)
 | Arquitectura | Layered por módulos | Misma base + patrones adicionales |
 | Autenticación | JWT básico, 2 roles | JWT refresh tokens, más roles |
 | Patrones principales | MVC, DTO, Mapper, Repository | +Strategy, Observer, Builder |
-| Transacciones | @Transactional simple | +Saga pattern para ventas |
-| Concurrencia | @Version en ProductionBatch | +Optimistic locking en Inventory |
-| Tests | Integration tests (ControllerIT) | +Unit tests, E2E tests |
+| Transacciones | @Transactional simple | +Saga pattern para flujos complejos |
+| Concurrencia | @Version en ProductionBatch, Sale | +Optimistic locking en Inventory |
+| Tests | Integration tests + unit tests (Sales, ProductionBatch) | +Unit tests para todos los services, E2E tests |
 | Base de datos | MySQL + Flyway | +Redis cache (opcional) |
 | Documentación | OpenAPI/Swagger en controllers | +Reportes automáticos |
 | Soft delete | Solo en Products | En Sales, Inventory |
-| FIFO | Lógica en ProductionBatch | Lógica de descuento en Sales |
+| FIFO | Lógica en ProductionBatch | Lógica de descuento en Sales ✅ IMPLEMENTADO |
 | SDD | No inicializado formalmente | Formalizar con openspec/ |
 
 ### Orden Recomendado de Implementación Futura
 1. **Inventory Module** ← Necesario para saber cuánto hay disponible
-2. **Sales Module** ← Core del negocio: registrar ventas con FIFO
-3. **Unit Tests** ← Coverage de services (no solo integration)
-4. **Pagination** → Todos los endpoints de lista
-5. **Reporting Module** ← Reportes para el admin
-6. **Notifications** ← Alertas de stock bajo
-7. **Audit Logging** ← Trazabilidad completa
-8. **SDD Initialization** ← Para los módulos que vengan después
+2. **Unit Tests** ← Coverage de services (ProductService, BulkProductService, ProductionBatchService)
+3. **Pagination** → Todos los endpoints de lista
+4. **Reporting Module** ← Reportes para el admin
+5. **Notifications** ← Alertas de stock bajo
+6. **Audit Logging** ← Trazabilidad completa
+7. **SDD Initialization** ← Para los módulos que vengan después (ya configurado)
 
 ---
 
@@ -617,16 +706,29 @@ main (producción)
 
 Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 
-1. **Explore** → Investigar requerimientos
-2. **Propose** → Propuesta de cambio
-3. **Spec** → Especificaciones (Given/When/Then)
-4. **Design** → Diseño técnico
-5. **Tasks** → Tareas de implementación
-6. **Apply** → Codear
-7. **Verify** → Verificar contra specs
-8. **Archive** → Cerrar change
+1. **Explore** → Investigar requerimientos ✅ (ventas)
+2. **Propose** → Propuesta de cambio ✅ (ventas)
+3. **Spec** → Especificaciones (Given/When/Then) ✅ (ventas)
+4. **Design** → Diseño técnico ✅ (ventas)
+5. **Tasks** → Tareas de implementación ✅ (ventas)
+6. **Apply** → Codear ✅ (Phase 1-5 completo, Phase 6 en progreso)
+7. **Verify** → Verificar contra specs ❌ (pendiente)
+8. **Archive** → Cerrar change ❌ (pendiente)
 
 La memoria persiste en **Engram**, lo que permite retomar en otra PC sin perder contexto.
+
+### Commits del Sales Module
+| Commit | Descripción |
+|--------|-------------|
+| `585a622` | feat(sales): implement Phase1-3 with FIFO logic, hybrid system |
+| `3776eeb` | docs(sales): add Spanish comments to all sales module files |
+| `18c3478` | feat(sales): implement Phase 4 - Controller & Security with integration tests |
+| `bdd330c` | test(sales): implement Phase 5 - Integration Tests (FIFO, stock, concurrency) |
+
+### Descubrimientos Críticos
+- **JWT Bug**: `JwtAuthenticationFilter` tenía `username == null` en vez de `!= null`. La autenticación no funcionaba desde el inicio.
+- **401 vs 403**: Spring Security retorna 403 por defecto para requests no autenticados. Se agregó `HttpStatusEntryPoint(UNAUTHORIZED)` para comportamiento REST correcto.
+- **GlobalExceptionHandler**: Faltaban handlers para `IllegalArgumentException` (400), `AccessDeniedException` (403), y `OptimisticLockingFailureException` (409).
 
 ---
 

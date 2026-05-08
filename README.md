@@ -21,6 +21,7 @@ src/main/java/com/mundolimpio/application/
 ├── product/           # Gestión de productos terminados
 ├── bulkproduct/       # Gestión de materia prima
 ├── productionbatch/    # Lotes de producción (FIFO)
+├── sales/             # Ventas (FIFO, FIFO discount)
 ├── user/              # Usuarios y autenticación
 ├── security/          # Configuración JWT y Spring Security
 └── common/            # Excepciones y DTOs compartidos
@@ -64,6 +65,38 @@ Cada módulo sigue el patrón **Controller → Service → Repository → Domain
 | GET | `/product/{productId}` | Lotes por producto | ADMIN |
 | GET | `/{id}` | Obtener por ID | ADMIN |
 
+### Ventas (`/api/v1/sales`)
+| Método | Endpoint | Descripción | Rol |
+|--------|----------|-------------|-----|
+| POST | `/` | Crear venta (FIFO) | ADMIN |
+
+**Lógica FIFO**: Al crear una venta, el sistema descuenta stock del lote de producción más antiguo primero. Si un lote no tiene suficiente stock, complementa con el siguiente lote más viejo.
+
+**Request ejemplo**:
+```json
+{
+  "productId": 1,
+  "quantity": 5
+}
+```
+
+**Response ejemplo**:
+```json
+{
+  "id": 1,
+  "totalAmount": 27.50,
+  "createdAt": "2026-05-07T23:00:00",
+  "items": [
+    {
+      "batchId": 3,
+      "quantity": 5.00,
+      "unitPrice": 5.50,
+      "unitCost": 5.50
+    }
+  ]
+}
+```
+
 ## Ejecución
 
 ### Requisitos
@@ -105,6 +138,9 @@ Tests existentes:
 - `BulkProductControllerIT` - Integración de materia prima
 - `ProductionBatchControllerIT` - Integración de lotes
 - `ProductionBatchServiceTest` - Unitario de servicio
+- `SaleControllerIT` - 8 integration tests (security + FIFO + stock)
+- `SaleServiceTest` - 4 tests de servicio
+- `SaleMapperTest` - 2 tests de mapper
 
 ## Documentación API
 
@@ -128,10 +164,11 @@ Migraciones en `src/main/resources/db/migration/` (Flyway):
 
 ## Siguientes Pasos
 
-- [ ] Módulo de Ventas (FIFO para descuento de stock)
+- [x] ~~Módulo de Ventas (FIFO para descuento de stock)~~ — **COMPLETADO**
+- [ ] Unit tests para todos los services (ProductService, BulkProductService)
 - [ ] Reportes de inventario y producción
 - [ ] Gestión de roles y permisos más granular
-- [ ] Tests de integración completos para todos los módulos
+- [ ] Pagination en endpoints de lista
 - [ ] CI/CD con GitHub Actions (configurado pero pendiente afinar)
 
 ## Memoria del Proyecto
