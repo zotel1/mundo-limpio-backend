@@ -171,9 +171,10 @@ public class SaleService {
             return saleMapper.toResponse(savedSale);
         } catch (OptimisticLockingFailureException e) {
             // Conflicto de concurrencia: otro proceso modificó un lote mientras
-            // procesábamos esta venta. El cliente debe reintentar.
+            // procesábamos esta venta. Spring maneja esta excepción en GlobalExceptionHandler
+            // retornando 409 Conflict. La relanzamos para que el handler la capture.
             log.error("Optimistic lock error during sale creation: {}", e.getMessage());
-            throw new RuntimeException("Concurrent sale conflict. Please retry.", e);
+            throw e; // Relanzamos para que GlobalExceptionHandler la maneje → 409
         }
     }
 
