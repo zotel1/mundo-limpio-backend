@@ -1,4 +1,11 @@
 application:
+  cors:
+    allowed-origins: http://localhost:8080, http://10.0.2.2:8080
+    # Orígenes permitidos para CORS.
+    # POR QUÉ: La app Flutter en Android emulator usa http://10.0.2.2:8080 (localhost del host),
+    # y el iOS simulator usa http://localhost:8080. Ambos necesitan CORS para acceder a la API.
+    # CÓMO: Spring Boot parsea automáticamente la lista separada por comas como List<String>.
+
   security:
     jwt:
       secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}

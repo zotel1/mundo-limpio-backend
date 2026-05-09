@@ -9,6 +9,7 @@ Sistema de inventario para productos de limpieza con gestión de materia prima y
 - **MySQL** (producción) + **H2** (tests)
 - **Flyway** (migraciones de base de datos)
 - **JWT** (autenticación)
+- **Spring Security CORS** (Cross-Origin Resource Sharing para app Flutter)
 - **OpenAPI/Swagger** (documentación de endpoints)
 - **Lombok** (reducción de boilerplate)
 
@@ -123,7 +124,21 @@ java -jar target/mundolimpio-0.0.1-SNAPSHOT.jar
 docker-compose up -d
 ```
 
-## Tests
+## CORS Configuration
+
+La aplicación tiene CORS habilitado para permitir que la app Flutter mobile se comunique con la API desde orígenes cruzados.
+
+### Orígenes permitidos
+- `http://localhost:8080` — iOS simulator y desarrollo local
+- `http://10.0.2.2:8080` — Android emulator
+
+### Cómo funciona
+- `CorsConfig.java` define un bean `CorsConfigurationSource` con la configuración CORS
+- `SecurityConfig.java` lo inyecta via `.cors()` en la SecurityFilterChain, ANTES de la autenticación
+- Los orígenes se configuran en `application.yml` (`application.cors.allowed-origins`) y se pueden overridear con variable de entorno `APPLICATION_CORS_ALLOWED_ORIGINS`
+- Usa JWT Bearer token (no cookies), por lo que `allowCredentials=false`
+
+### Tests
 
 ```bash
 # Ejecutar tests (usa H2 in-memory)
@@ -141,6 +156,8 @@ Tests existentes:
 - `SaleControllerIT` - 8 integration tests (security + FIFO + stock)
 - `SaleServiceTest` - 4 tests de servicio
 - `SaleMapperTest` - 2 tests de mapper
+- `CorsConfigTest` - Verificación del bean CorsConfigurationSource
+- `CorsSecurityTest` - 3 tests de integración CORS (preflight, origen no permitido, GET con Origin)
 
 ## Documentación API
 
