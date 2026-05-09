@@ -2,6 +2,7 @@ package com.mundolimpio.application.user.controller;
 
 import com.mundolimpio.application.user.dto.LoginRequest;
 import com.mundolimpio.application.user.dto.LoginResponse;
+import com.mundolimpio.application.user.dto.RefreshRequest;
 import com.mundolimpio.application.user.dto.RegisterRequest;
 import com.mundolimpio.application.user.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +47,17 @@ public class AuthController {
     })
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "Refresh JWT token", description = "Renueva el access token usando un refresh token válido.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token renovado exitosamente"),
+            @ApiResponse(responseCode = "401", description = "Refresh token inválido o expirado")
+    })
+    public ResponseEntity<LoginResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        LoginResponse response = authService.refresh(request);
         return ResponseEntity.ok(response);
     }
 }
