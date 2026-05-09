@@ -1,7 +1,7 @@
 # Guía de Estudio - Mundo Limpio Backend
 
 > **Propósito**: Archivo vivo con todos los conceptos técnicos sugeridos durante el desarrollo del proyecto.  
-> **Actualizado**: 2026-05-08 (CORS Configuration - Fase Explore, Propose, Spec)  
+> **Actualizado**: 2026-05-09 (Sprint 1: CORS Configuration ✅ — complete SDD cycle)  
 > **Mantenido por**: Gentle AI (big-pickle) + zotel1
 
 ---
@@ -236,13 +236,29 @@ Configuración en `pom.xml`:
 </plugin>
 ```
 
-### 6.4 GitHub Actions artifacts
+### 6.4 JaCoCo BUNDLE vs cobertura por módulo
+**Gotcha importante**: cuando usás `<element>BUNDLE</element>`, JaCoCo mide la cobertura de **TODAS las clases del proyecto**, no solo las que cambiás.
+
+```
+Rule violated for bundle mundolimpio: instructions covered ratio is 0.25, but expected minimum is 0.70
+```
+
+Esto pasó en el CI al hacer PR del CORS Configuration. El error es porque el proyecto tiene **47 clases** y solo los módulos nuevos (Sales, CORS) tienen tests. Los módulos viejos (Product, BulkProduct) no tienen cobertura.
+
+**Soluciones:**
+- **Temporal**: bajar el umbral al nivel actual (ej: 20%) e irlo subiendo a medida que se agregan tests. ❌ No ideal porque no incentiva mejorar cobertura.
+- **Medio**: excluir módulos viejos del check de JaCoCo con `<excludes>` en la regla. ✅ Permite enforce coverage solo en código nuevo.
+- **Permanente**: agregar tests a los módulos viejos y subir el umbral de a poco. ✅ La solución correcta pero lleva tiempo.
+
+**Lección**: si agregás JaCoCo a un proyecto existente, verificá la cobertura actual ANTES de definir el umbral mínimo.
+
+### 6.5 GitHub Actions artifacts
 Guardar archivos generados en CI: `actions/upload-artifact@v4`.
 
-### 6.5 Testcontainers
+### 6.6 Testcontainers
 Contenedores Docker para tests de integración reales. Soporta MySQL, PostgreSQL, Redis, etc.
 
-### 6.6 Testcontainers with MySQL
+### 6.7 Testcontainers with MySQL
 ```java
 @TestConfiguration
 public class TestConfig {
@@ -706,14 +722,15 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 
 > **Nota**: Esta sección se completará automáticamente cuando sugiera nuevos conceptos en futuras sesiones.
 
-### ✅ Completados en esta sesión:
+### ✅ Completados en esta sesión (2026-05-09):
 - [x] CORS (Cross-Origin Resource Sharing) — qué es y cómo funciona
 - [x] Preflight requests (OPTIONS) — por qué existen y cómo manejarlos
 - [x] CORS en Spring Security — las 3 opciones y por qué CorsConfigurationSource gana
 - [x] El conflicto allowCredentials + wildcard origins
 - [x] UrlBasedCorsConfigurationSource — path pattern mapping
 - [x] Externalización de configuración con @Value + environment variables
-- [x] JaCoCo code coverage con umbral mínimo del 70%
+- [x] JaCoCo BUNDLE coverage gotcha — el threshold aplica a TODAS las clases, no solo las nuevas
+- [x] Inyección explícita de beans vs auto-detección en Spring Security
 
 ### Pendientes:
 - [ ] Pagination (paginación en endpoints GET)
