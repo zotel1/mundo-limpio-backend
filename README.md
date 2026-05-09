@@ -36,7 +36,8 @@ Cada módulo sigue el patrón **Controller → Service → Repository → Domain
 | Método | Endpoint | Descripción | Rol |
 |--------|----------|-------------|-----|
 | POST | `/register` | Registrar usuario | Público |
-| POST | `/login` | Obtener JWT | Público |
+| POST | `/login` | Obtener JWT (access + refresh) | Público |
+| POST | `/refresh` | Renovar access token con refresh token | Público (con token válido) |
 
 ### Productos (`/api/v1/products`)
 | Método | Endpoint | Descripción | Rol |
@@ -182,6 +183,7 @@ Migraciones en `src/main/resources/db/migration/` (Flyway):
 ## Siguientes Pasos
 
 - [x] ~~Módulo de Ventas (FIFO para descuento de stock)~~ — **COMPLETADO**
+- [ ] **Auth Refresh Token** — Phase 2-4 (Core Implementation + Testing + Wiring)
 - [ ] Unit tests para todos los services (ProductService, BulkProductService)
 - [ ] Reportes de inventario y producción
 - [ ] Gestión de roles y permisos más granular

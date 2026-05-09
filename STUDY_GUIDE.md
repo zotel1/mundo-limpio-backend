@@ -1,7 +1,7 @@
 # Guía de Estudio - Mundo Limpio Backend
 
 > **Propósito**: Archivo vivo con todos los conceptos técnicos sugeridos durante el desarrollo del proyecto.  
-> **Actualizado**: 2026-05-09 (Sprint 1: CORS Configuration ✅ — complete SDD cycle)  
+> **Actualizado**: 2026-05-09 (Sprint 1: Auth Refresh Token 🚧 — Phase 1 Foundation)  
 > **Mantenido por**: Gentle AI (big-pickle) + zotel1
 
 ---
@@ -183,7 +183,33 @@ Qué pasa cuando borrás una entidad padre:
 ### 4.17 Java Records
 DTOs inmutables (Java 14+): `record ProductRequest(String sku, String name) {}`.
 
+### 4.18 @Order (@ControllerAdvice ordering)
+Controla el orden de ejecución de componentes cuando hay múltiples candidatos. 
+
+**En ExceptionHandlers:** Spring busca el primer `@ControllerAdvice` que tenga un `@ExceptionHandler` para la excepción lanzada. El orden de búsqueda es:
+1. Handlers con `@Order(Ordered.HIGHEST_PRECEDENCE)` → se evalúan PRIMERO
+2. Handlers sin `@Order` → tienen prioridad `LOWEST_PRECEDENCE` implícita → se evalúan ÚLTIMO
+
+**Problema**: `GlobalExceptionHandler` con `@ExceptionHandler(Exception.class)` atrapa TODAS las excepciones (catch-all). Si agregás un handler específico sin `@Order`, el catch-all gana porque es más genérico... ¿o no?
+
+**Realidad**: Spring NO usa la especificidad del tipo para ordenar `@ControllerAdvice` — usa `@Order`. Sin `@Order`, Spring encuentra el primer handler declarado (orden de carga). Para garantizar que tu handler específico se ejecute ANTES que el catch-all: **SIEMPRE usá `@Order(Ordered.HIGHEST_PRECEDENCE)`**.
+
+```java
+@ControllerAdvice(basePackages = "com.mundolimpio.application.user")
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class AuthExceptionHandler {
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ErrorResponse> handle(InvalidRefreshTokenException ex) {
+        // Devuelve 401
+    }
+}
+```
+
+**Regla**: `@ControllerAdvice` con `basePackages` + `@Order(HIGHEST_PRECEDENCE)` = handler especializado que gana al genérico.
+
 ---
+
+## 5. Base de Datos
 
 ## 5. Base de Datos
 
@@ -332,6 +358,22 @@ Control de acceso basado en roles: `@PreAuthorize("hasRole('ADMIN')")`.
 
 ### 7.3 Refresh Tokens
 Tokens de larga duración para obtener nuevos access tokens sin re-login.
+
+**Flujo en este proyecto:**
+1. Login/Register → genera **access token** (15 min) + **refresh token** (7 días)
+2. Cuando el access token expira, el cliente envía el refresh token a POST `/api/v1/auth/refresh`
+3. El servidor valida: extrae username → busca usuario → verifica token → genera NUEVO par de tokens
+4. Si el refresh token expiró o es inválido → 401 UNAUTHORIZED → cliente redirige a login
+
+**Refresh token vs Access token:**
+| Aspecto | Access Token | Refresh Token |
+|---------|-------------|---------------|
+| Duración | Corta (15 min) | Larga (7 días) |
+| Se envía en cada request | ✅ (header Authorization) | ❌ |
+| Se almacena seguro | ❌ (lo pierde el cliente) | ✅ (flutter_secure_storage) |
+| Rotación | Cada refresh | Opcional (por ahora no se rota) |
+
+**Regla de seguridad**: Todos los errores del endpoint `/refresh` deben devolver **401**, nunca 400 o 500. Esto evita información leak sobre por qué falló la renovación.
 
 ### 7.4 Rate Limiting
 Limitar cantidad de requests por IP/usuario en un tiempo determinado.
@@ -488,7 +530,26 @@ Entidades: `Sale` (id, totalAmount, createdAt, @Version) y `SaleItem` (id, sale,
 - 401 No Token, 403 As Operator, 201 Success, 400 Insufficient Stock
 - FIFO Multiple Batches, Partial Deduction, Failed Sale Stock Not Modified, Optimistic Locking
 
-### 10.4 Inventory Module (futuro)
+### 10.4 Auth Refresh Token — Fase 1 Foundation
+
+**Qué es**: Endpoint POST `/api/v1/auth/refresh` para renovar el access token JWT usando el refresh token que ya se genera en login/register.
+
+**Arquitectura de Foundation (Phase 1)**:
+- `RefreshRequest.java` — record con `@NotBlank String refreshToken`
+- `InvalidRefreshTokenException.java` — RuntimeException con enum anidado `RefreshError` (EXPIRED, INVALID, USER_NOT_FOUND, MALFORMED)
+- `AuthExceptionHandler.java` — `@ControllerAdvice` con `@Order(HIGHEST_PRECEDENCE)`, captura `InvalidRefreshTokenException` → 401
+
+**Decisión crítica**: El `AuthExceptionHandler` usa `@Order(Ordered.HIGHEST_PRECEDENCE)` porque el `GlobalExceptionHandler` existente tiene `@ExceptionHandler(Exception.class)` catch-all que devuelve 500. Sin la prioridad explícita, `InvalidRefreshTokenException` (que extiende `RuntimeException` → `Exception`) caería en el catch-all y devolvería 500 en vez de 401.
+
+**RefreshError enum** (anidado dentro de la excepción por cohesión semántica):
+| Valor | Descripción | Causa |
+|-------|-------------|-------|
+| EXPIRED | El refresh token ha expirado | Token JWT con fecha pasada |
+| INVALID | El refresh token no es válido | Token no reconocido o alterado |
+| USER_NOT_FOUND | El usuario asociado no existe | Usuario eliminado entre login y refresh |
+| MALFORMED | El token está mal formado | JWT parse error (JwtException) |
+
+### 10.5 Inventory Module (futuro)
 Gestión de stock de productos envasados. Diferencia: `production_batches` (lotes) vs `inventory` (stock final).
 
 ---
@@ -731,6 +792,10 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 - [x] Externalización de configuración con @Value + environment variables
 - [x] JaCoCo BUNDLE coverage gotcha — el threshold aplica a TODAS las clases, no solo las nuevas
 - [x] Inyección explícita de beans vs auto-detección en Spring Security
+- [x] **JWT Refresh Token flow** — access token (15 min) + refresh token (7 días)
+- [x] **@Order en @ControllerAdvice** — HIGHEST_PRECEDENCE para ganarle al catch-all
+- [x] **ErrorResponse unificado** — mismo DTO en AuthExceptionHandler y GlobalExceptionHandler
+- [x] **@ControllerAdvice basePackages** — scoping para que handler solo aplique a módulo específico
 
 ### Pendientes:
 - [ ] Pagination (paginación en endpoints GET)

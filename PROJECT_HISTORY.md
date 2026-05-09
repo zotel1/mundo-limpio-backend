@@ -311,6 +311,49 @@ El browser cachea la respuesta del preflight OPTIONS por 1 hora, reduciendo late
 
 ---
 
+### Fase 7: Auth Refresh Token (Mayo 2026)
+
+#### Branch: `feature/auth-refresh-token`
+
+**Objetivo:** Implementar endpoint POST `/api/v1/auth/refresh` que permita renovar el access token JWT usando el refresh token (7 días) que ya se genera en login/register.
+
+**SDD Phases completadas:**
+- Explore → Propose → Spec (6 reqs, 12 scenarios) → Design → Tasks (12 tasks en 4 fases)
+
+**Phase 1: Foundation (este commit)**
+Archivos creados:
+
+1. **`user/dto/RefreshRequest.java`** (NUEVO)
+   - Record con `@NotBlank String refreshToken`
+   - Jakarta Validation para rechazar tokens vacíos antes de llegar al service
+
+2. **`user/exception/InvalidRefreshTokenException.java`** (NUEVO)
+   - Extiende `RuntimeException`
+   - Enum anidado `RefreshError`: EXPIRED, INVALID, USER_NOT_FOUND, MALFORMED
+   - Mensajes descriptivos en español para cada causa
+
+3. **`user/exception/AuthExceptionHandler.java`** (NUEVO)
+   - `@ControllerAdvice(basePackages = "com.mundolimpio.application.user")`
+   - `@Order(Ordered.HIGHEST_PRECEDENCE)` — se ejecuta ANTES que GlobalExceptionHandler
+   - Captura `InvalidRefreshTokenException` → HTTP 401 con `ErrorResponse`
+   - Fundamental: sin `@Order`, el catch-all de `GlobalExceptionHandler` devolvería 500
+
+**Decisión de diseño - `@Order` en Exception Handlers:**
+El `GlobalExceptionHandler` existente no tiene `@Order`, por lo que Spring le asigna la prioridad más baja (`LOWEST_PRECEDENCE`). El nuevo `AuthExceptionHandler` usa `@Order(Ordered.HIGHEST_PRECEDENCE)` para garantizar que Spring lo evalúe PRIMERO cuando la excepción ocurre en el módulo `user`. Si no, `InvalidRefreshTokenException` (que extiende `RuntimeException` → `Exception`) caería en el catch-all de `GlobalExceptionHandler` y devolvería 500.
+
+**Decisión de diseño - RefreshError enum anidado:**
+Se optó por un enum anidado dentro de `InvalidRefreshTokenException` (en vez de archivo separado) porque:
+- Cohesión semántica: la razón del error no tiene sentido fuera del contexto de la excepción
+- Menos archivos = menos complejidad
+- El enum solo se usa en el handler y el service, no se expone en la API
+
+**Próximas fases:**
+- Phase 2: Core — AuthService.refresh() + AuthController./refresh
+- Phase 3: Testing — Unit + Integration tests
+- Phase 4: Wiring — application.yml + mvn verify
+
+---
+
 ## Arquitectura
 
 ### Estructura de Capas
@@ -366,7 +409,11 @@ src/main/java/com/mundolimpio/application/
 │   ├── controller/AuthController.java
 │   ├── dto/RegisterRequest.java
 │   ├── dto/LoginRequest.java
-│   └── dto/LoginResponse.java
+│   ├── dto/LoginResponse.java
+│   ├── dto/RefreshRequest.java         # DTO para renovar access token
+│   └── exception/
+│       ├── InvalidRefreshTokenException.java
+│       └── AuthExceptionHandler.java   # @ControllerAdvice con @Order → 401
 │
 ├── security/                            # Configuración Seguridad
 │   ├── config/SecurityConfig.java
@@ -564,6 +611,7 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] **CORS Configuration (preflight OPTIONS + CorsConfigurationSource)**
 
 ### Módulos en Progreso 🚧
+- [ ] **Auth Refresh Token** (Phase 1 Foundation ✅ | Phase 2-4 pendientes)
 - [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales)
 
 ### Tests
@@ -577,7 +625,9 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 ```
 main (producción)
 ├── develop (integración)
-    ├── feature/sales (actual - Phase 5 COMPLETE, Phase 6 pendiente)
+    ├── feature/auth-refresh-token (actual - Phase 1 complete, Phase 2-4 pendientes)
+    ├── feature/cors-configuration (completado + mergeado a develop)
+    ├── feature/sales (completado)
     ├── feature/production-batches (completado)
     ├── feature/bulk-products (completado)
     └── feature/product-module (completado)
@@ -755,16 +805,26 @@ main (producción)
 
 Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 
-1. **Explore** → Investigar requerimientos ✅ (ventas)
-2. **Propose** → Propuesta de cambio ✅ (ventas)
-3. **Spec** → Especificaciones (Given/When/Then) ✅ (ventas)
-4. **Design** → Diseño técnico ✅ (ventas)
-5. **Tasks** → Tareas de implementación ✅ (ventas)
-6. **Apply** → Codear ✅ (Phase 1-5 completo, Phase 6 en progreso)
-7. **Verify** → Verificar contra specs ❌ (pendiente)
-8. **Archive** → Cerrar change ❌ (pendiente)
+### Sales Module
+1. **Explore** → ✅
+2. **Propose** → ✅
+3. **Spec** → ✅
+4. **Design** → ✅
+5. **Tasks** → ✅
+6. **Apply** → ✅ (Phase 1-5 completo, Phase 6 en progreso)
+7. **Verify** → ❌ (pendiente)
+8. **Archive** → ❌ (pendiente)
 
-La memoria persiste en **Engram**, lo que permite retomar en otra PC sin perder contexto.
+### Auth Refresh Token (Sprint 1)
+1. **Explore** → ✅
+2. **Propose** → ✅
+3. **Spec** (6 reqs, 12 scenarios) → ✅
+4. **Design** (3 new, 2 modified) → ✅
+5. **Tasks** (12 tasks, 4 phases) → ✅
+6. **Apply Phase 1** (Foundation) → ✅ **← Estamos acá**
+7. **Apply Phase 2-4** → ❌ (pendiente)
+8. **Verify** → ❌ (pendiente)
+9. **Archive** → ❌ (pendiente)
 
 ### Commits del Sales Module
 | Commit | Descripción |
@@ -778,9 +838,10 @@ La memoria persiste en **Engram**, lo que permite retomar en otra PC sin perder 
 - **JWT Bug**: `JwtAuthenticationFilter` tenía `username == null` en vez de `!= null`. La autenticación no funcionaba desde el inicio.
 - **401 vs 403**: Spring Security retorna 403 por defecto para requests no autenticados. Se agregó `HttpStatusEntryPoint(UNAUTHORIZED)` para comportamiento REST correcto.
 - **GlobalExceptionHandler**: Faltaban handlers para `IllegalArgumentException` (400), `AccessDeniedException` (403), y `OptimisticLockingFailureException` (409).
+- **@Order en Exception Handlers**: Sin `@Order(Ordered.HIGHEST_PRECEDENCE)`, el `GlobalExceptionHandler` (catch-all Exception → 500) captura `InvalidRefreshTokenException` antes que `AuthExceptionHandler`.
 
 ---
 
-**Última actualización:** Mayo 2026
+**Última actualización:** 2026-05-09 (Sprint 1: Auth Refresh Token — Phase 1 Foundation)
 **Mantenido por:** zotel1
 **IA colaboradora:** Gentle AI (big-pickle)
