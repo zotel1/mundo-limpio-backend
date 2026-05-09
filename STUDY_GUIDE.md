@@ -1,7 +1,7 @@
 # Guía de Estudio - Mundo Limpio Backend
 
 > **Propósito**: Archivo vivo con todos los conceptos técnicos sugeridos durante el desarrollo del proyecto.  
-> **Actualizado**: 2026-05-08 (Sales Module completo - Phase 6)  
+> **Actualizado**: 2026-05-08 (CORS Configuration - Fase Explore, Propose, Spec)  
 > **Mantenido por**: Gentle AI (big-pickle) + zotel1
 
 ---
@@ -322,6 +322,55 @@ Limitar cantidad de requests por IP/usuario en un tiempo determinado.
 
 ### 7.5 BCryptPasswordEncoder
 Algoritmo de hashing para passwords: `new BCryptPasswordEncoder()`.
+
+### 7.6 CORS (Cross-Origin Resource Sharing)
+Mecanismo de seguridad del navegador que controla qué orígenes (dominio, protocolo, puerto) pueden acceder a recursos de un servidor. **No es opcional** — los navegadores lo exigen. Flutter mobile también lo respeta cuando usa HTTP clients basados en navegador.
+
+**Headers principales:**
+- `Access-Control-Allow-Origin` → qué orígenes están permitidos (`*` o lista)
+- `Access-Control-Allow-Methods` → qué métodos HTTP (GET, POST, etc.)
+- `Access-Control-Allow-Headers` → qué headers puede enviar el cliente
+- `Access-Control-Expose-Headers` → qué headers puede leer el cliente
+- `Access-Control-Allow-Credentials` → si permite cookies/auth automática
+- `Access-Control-Max-Age` → caché del preflight en segundos
+
+### 7.7 Preflight Requests (OPTIONS)
+Cuando un request cross-origin usa métodos "no simples" (PUT, DELETE, PATCH, etc.) o headers personalizados (Authorization, Content-Type), el navegador envía primero un **OPTIONS** (preflight) para preguntar al servidor si el request real está permitido.
+
+**Flujo:**
+1. Navegador envía OPTIONS con headers `Origin`, `Access-Control-Request-Method`, `Access-Control-Request-Headers`
+2. Servidor responde con los headers CORS permitidos
+3. Si todo ok → navegador envía el request real
+4. Si no → navegador bloquea el request (ni siquiera lo envía)
+
+**Gotcha crítico**: El preflight NO manda cookies ni headers de auth. Si el servidor requiere autenticación en todos los endpoints, el preflight falla con 401 ANTES de que CORS pueda responder. **Solución**: el filtro CORS debe ejecutarse ANTES del filtro de autenticación.
+
+### 7.8 CORS en Spring Security — Las 3 opciones
+
+| Opción | ¿Funciona? | Por qué |
+|--------|-----------|---------|
+| `@CrossOrigin` por controller | ✅ Sirve | Pero viola DRY — tenés que anotar cada controller |
+| `WebMvcConfigurer.addCorsMappings()` | ❌ **NO sirve** | Los filtros de seguridad corren ANTES que los interceptors MVC. El preflight OPTIONS nunca llega al CORS handler. Falla silenciosamente. |
+| `CorsConfigurationSource` bean + `.cors()` | ✅ **RECOMENDADA** | Corre a nivel del Security Filter Chain — ANTES de autenticación. Spring Security auto-detecta el bean. |
+
+**Decisión clave**: Siempre que tengas Spring Security, usá `CorsConfigurationSource` + `.cors(Customizer.withDefaults())`. Es la única opción que garantiza que CORS se maneje antes que la autenticación.
+
+### 7.9 El conflicto allowCredentials + wildcard origins
+**Regla del navegador**: Si `Access-Control-Allow-Credentials: true`, entonces `Access-Control-Allow-Origin` NO puede ser `*`. Tiene que ser un origin específico.
+
+**Implicancia**: Si usás JWT (header `Authorization`) y NO cookies, poné `allowCredentials(false)`. Te ahorrás el dolor de cabeza de tener que listar origins específicos cuando querés usar `*` o múltiples orígenes.
+
+**En este proyecto**: JWT usa `Authorization: Bearer <token>` → NO cookies → `allowCredentials(false)` → podemos listar varios origins sin restricciones.
+
+### 7.10 UrlBasedCorsConfigurationSource
+Clase que mapea path patterns (`/**`) a configuraciones CORS. Permite tener configuraciones diferentes por ruta (ej: `/api/**` vs `/public/**`).
+
+```java
+var source = new UrlBasedCorsConfigurationSource();
+source.registerCorsConfiguration("/**", config);
+```
+
+El path pattern sigue las mismas reglas que Spring (AntPathMatcher).
 
 ### 7.6 HttpStatusEntryPoint
 Spring Security retorna 403 por defecto para requests no autenticados. Para APIs REST, necesitás 401. Solución:
@@ -658,14 +707,13 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 > **Nota**: Esta sección se completará automáticamente cuando sugiera nuevos conceptos en futuras sesiones.
 
 ### ✅ Completados en esta sesión:
-- [x] Integration Tests con JWT y Spring Security
-- [x] Snapshot Pattern (costo al momento de venta)
-- [x] Atomicity testing (@Transactional rollback)
-- [x] HttpStatusEntryPoint para 401 responses
-- [x] GlobalExceptionHandler para seguridad (400, 403, 409)
-- [x] FIFO con múltiples lotes (complejo)
-- [x] Optimistic Locking verification
-- [x] Bidirectional JPA relationships con helper methods
+- [x] CORS (Cross-Origin Resource Sharing) — qué es y cómo funciona
+- [x] Preflight requests (OPTIONS) — por qué existen y cómo manejarlos
+- [x] CORS en Spring Security — las 3 opciones y por qué CorsConfigurationSource gana
+- [x] El conflicto allowCredentials + wildcard origins
+- [x] UrlBasedCorsConfigurationSource — path pattern mapping
+- [x] Externalización de configuración con @Value + environment variables
+- [x] JaCoCo code coverage con umbral mínimo del 70%
 
 ### Pendientes:
 - [ ] Pagination (paginación en endpoints GET)
@@ -681,7 +729,7 @@ Table-driven tests, golden file testing, `teatest` para Bubbletea TUI.
 - [ ] DTO vs DAO vs VO (diferencias)
 - [x] Jakarta Validation (@NotBlank, @NotNull, @Positive) - EXPLICADO EN 11.39
 - [ ] OpenAPI/Swagger annotations (@Operation, @ApiResponse)
-- [ ] Spring Security Filter Chain
+- [x] Spring Security Filter Chain — EXPLICADO EN 7.8 (CORS filter order)
 - [ ] JWT Structure (Header, Payload, Signature)
 - [ ] Refresh Token Rotation - YA EXPLICADO EN 7.3
 - [ ] RBAC vs ABAC (Attribute-Based Access Control)

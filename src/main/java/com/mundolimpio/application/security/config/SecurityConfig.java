@@ -3,9 +3,11 @@ package com.mundolimpio.application.security.config;
 import com.mundolimpio.application.security.filter.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -28,6 +30,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * - methodSecurity enabled: permite usar @PreAuthorize en controllers para control granular.
  * - HttpStatusEntryPoint(UNAUTHORIZED): cuando un request no autenticado intenta acceder
  *   a un endpoint protegido, retorna 401 en vez de 403 (comportamiento REST estándar).
+ * - CORS habilitado: permite que la app Flutter mobile acceda a la API desde orígenes
+ *   cruzados (Android emulator 10.0.2.2, iOS simulator localhost). CorsConfig.java
+ *   define el bean CorsConfigurationSource que se inyecta explicitamente en el
+ *   configurador CORS via .cors(cors -> cors.configurationSource(...)).
  */
 @Configuration
 @EnableWebSecurity
@@ -41,8 +47,17 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   CorsConfigurationSource corsConfigurationSource) throws Exception {
         return http
+                // CORS debe ir ANTES que cualquier configuracion de seguridad.
+                // POR QUE: Los preflight OPTIONS de CORS deben ser manejados antes de
+                // llegar al filter de autenticacion. Si CORS va despues de auth,
+                // los preflight OPTIONS a endpoints protegidos retornarian 401.
+                // COMO: Inyectamos explicitamente CorsConfigurationSource (definido en
+                // CorsConfig.java) en el configurador CORS. Esto garantiza que Spring
+                // Security use NUESTRA configuracion, no una auto-detectada.
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // Retorna 401 cuando no hay autenticación (en vez de 403 por defecto)
@@ -50,6 +65,12 @@ public class SecurityConfig {
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // Permitir OPTIONS sin autenticacion para CORS preflight.
+                        // POR QUE: Los preflight CORS son OPTIONS sin headers de auth.
+                        // El CorsFilter (configurado en .cors() arriba) valida el origen.
+                        // Si Spring Security bloquea el OPTIONS, el browser nunca recibe
+                        // los headers CORS y rechaza el request real.
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/product/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()

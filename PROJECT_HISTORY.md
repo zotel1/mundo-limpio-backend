@@ -265,6 +265,52 @@ El @Version en ProductionBatch protege contra condiciones de carrera. Si dos ven
 
 ---
 
+### Fase 6: CORS Configuration (Mayo 2026)
+
+#### Branch: `feature/cors` (o integrado en `develop`)
+
+**Lo que se implementó:**
+1. **CorsConfig.java** (NUEVO)
+   - `@Configuration` con bean `CorsConfigurationSource`
+   - Usa `UrlBasedCorsConfigurationSource` registrando `/**` con configuración CORS completa
+   - Orígenes externalizados via `@Value("${application.cors.allowed-origins}")`
+   - Config: allowedOrigins (localhost:8080, 10.0.2.2:8080), allowedMethods (GET/POST/PUT/PATCH/DELETE/OPTIONS), allowedHeaders (Authorization/Content-Type/Accept/Origin), exposedHeaders (Authorization), allowCredentials(false), maxAge(3600)
+   - Comentarios en español explicando cada decisión técnica
+
+2. **SecurityConfig.java** (MODIFICADO)
+   - `.cors(cors -> cors.configurationSource(corsConfigurationSource))` agregado ANTES de `.csrf()`
+   - `.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()` para que preflight bypassee auth
+   - Comentarios en español explicando por qué CORS va antes que auth
+
+3. **application.yml** (MODIFICADO)
+   - `application.cors.allowed-origins: http://localhost:8080, http://10.0.2.2:8080`
+
+4. **Tests**
+   - `CorsConfigTest`: Verifica que el bean CorsConfigurationSource existe con orígenes, métodos, headers, maxAge y allowCredentials correctos
+   - `CorsSecurityTest` (3 tests): Verifica que preflight OPTIONS retorna 200 con headers CORS, que origen no permitido no recibe headers, y que GET con Origin aún requiere auth
+
+**Decisión de diseño - CorsConfigurationSource vs WebMvcConfigurer:**
+Se usó `@Bean CorsConfigurationSource` en vez de `WebMvcConfigurer` porque:
+- CorsConfigurationSource corre a nivel de FILTRO de Spring Security, antes de autenticación
+- WebMvcConfigurer corre a nivel de INTERCEPTOR de Spring MVC, después de autenticación
+- Para que el preflight OPTIONS funcione sin auth, necesitamos el approach de filtro
+
+**Decisión de diseño - allowCredentials(false):**
+La autenticación usa JWT Bearer token (en header Authorization), no cookies. Con `allowCredentials=false` podemos usar multi-value allowedOrigins sin restricciones.
+
+**Decisión de diseño - maxAge(3600):**
+El browser cachea la respuesta del preflight OPTIONS por 1 hora, reduciendo latencia en requests consecutivos de la app Flutter.
+
+**Orígenes configurados:**
+- `http://localhost:8080` — iOS simulator y desarrollo local
+- `http://10.0.2.2:8080` — Android emulator (10.0.2.2 es localhost del host)
+
+**Descubrimiento crítico:**
+- `CorsFilter` de Spring Security (vía `.cors()`) NO short-circuita el filter chain para preflights válidos — agrega headers CORS pero continúa la cadena. Por eso es necesario también permitir OPTIONS en `authorizeHttpRequests`.
+- `TestRestTemplate` (vía `HttpURLConnection`) no expone correctamente headers `Access-Control-*` en las respuestas. Para tests de CORS, usar `MockMvc`.
+
+---
+
 ## Arquitectura
 
 ### Estructura de Capas
@@ -324,6 +370,7 @@ src/main/java/com/mundolimpio/application/
 │
 ├── security/                            # Configuración Seguridad
 │   ├── config/SecurityConfig.java
+│   ├── config/CorsConfig.java           # Configuración CORS (CorsConfigurationSource)
 │   ├── filter/JwtAuthenticationFilter.java
 │   ├── service/JwtService.java
 │   └── service/CustomUserDetailsService.java
@@ -514,6 +561,7 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] Autenticación JWT (registro + login)
 - [x] RBAC con roles ADMIN/OPERATOR
 - [x] **Módulo de Ventas (FIFO + @Version + 8 integration tests)**
+- [x] **CORS Configuration (preflight OPTIONS + CorsConfigurationSource)**
 
 ### Módulos en Progreso 🚧
 - [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales)
@@ -521,7 +569,8 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 ### Tests
 - **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`
 - **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests)
-- **Total tests passing**: 10 unit tests + 8 integration tests (verificados individualmente)
+- **CORS tests**: `CorsConfigTest` (1 test), `CorsSecurityTest` (3 tests)
+- **Total tests passing**: 10 unit tests + 8 integration tests + 4 CORS tests (verificados individualmente)
 - **Coverage**: Pendiente configurar JaCoCo reports
 
 ### Branches Actuales
