@@ -347,10 +347,48 @@ Se optó por un enum anidado dentro de `InvalidRefreshTokenException` (en vez de
 - Menos archivos = menos complejidad
 - El enum solo se usa en el handler y el service, no se expone en la API
 
-**Próximas fases:**
-- Phase 2: Core — AuthService.refresh() + AuthController./refresh
-- Phase 3: Testing — Unit + Integration tests
-- Phase 4: Wiring — application.yml + mvn verify
+**Phase 2: Core Implementation**
+Archivos modificados:
+
+1. **`AuthService.java`** (MODIFICADO)
+   - Agregado `CustomUserDetailsService` como dependencia (constructor injection)
+   - Agregado `@Value("${application.security.jwt.refresh-expiration}")` con default `:604800000`
+   - Reemplazado `604800000L` hardcodeado por `refreshExpiration` en `register()` y `login()`
+   - Nuevo método `refresh(RefreshRequest)`: extrae username → carga usuario via `CustomUserDetailsService` → valida token → genera nuevo par → retorna `LoginResponse`
+   - Error handling: `JwtException` → MALFORMED, `UsernameNotFoundException` → USER_NOT_FOUND, `!isTokenValid` → INVALID
+
+2. **`AuthController.java`** (MODIFICADO)
+   - Nuevo endpoint `POST /api/v1/auth/refresh` con Swagger docs
+   - Acepta `@Valid @RequestBody RefreshRequest`, delega a `authService.refresh()`
+   - Retorna 200 OK o 401 via AuthExceptionHandler
+
+**Phase 3: Testing**
+Archivos creados:
+
+1. **`AuthServiceTest.java`** (4 tests, Mockito)
+   - `validToken_ShouldReturnNewTokens`: token válido → LoginResponse con nuevos tokens
+   - `malformedToken_ShouldThrowMalformed`: token malformado → InvalidRefreshTokenException(MALFORMED)
+   - `deletedUser_ShouldThrowUserNotFound`: usuario eliminado → InvalidRefreshTokenException(USER_NOT_FOUND)
+   - `expiredToken_ShouldThrowInvalid`: token expirado → InvalidRefreshTokenException(INVALID)
+
+2. **`AuthControllerTest.java`** (2 tests, `@SpringBootTest` + `@MockBean`)
+   - `shouldReturn200WhenRefreshSucceeds`: POST /refresh con token válido → 200 OK
+   - `shouldReturn401WhenRefreshFails`: POST /refresh con token inválido → 401 UNAUTHORIZED
+
+3. **`AuthRefreshIT.java`** (1 test, `@SpringBootTest(RANDOM_PORT)` + TestRestTemplate)
+   - `shouldRefreshTokenSuccessfully`: register → login → POST /refresh → 200 + tokens válidos
+
+**Phase 4: Wiring**
+- Uncommented `refresh-expiration: 604800000` en `application.yml`
+- `mvn verify` → 20 tests, 0 failures ✅
+
+**Decisión de diseño - @Value default:**
+Se agregó `:604800000` como default en `@Value("${application.security.jwt.refresh-expiration:604800000}")` para que los tests pasaran ANTES de descomentar la propiedad en `application.yml`. En Phase 4 se descomentó, y Spring usa el valor del YAML en vez del default.
+
+**Decisión de diseño - AuthControllerTest con @SpringBootTest:**
+Se usó `@SpringBootTest` en vez de `@WebMvcTest` porque `@WebMvcTest` no carga los filters de seguridad correctamente (JwtAuthenticationFilter necesita JwtService). Como `/api/v1/auth/**` es `permitAll()`, el contexto completo permite testear el endpoint sin autenticación.
+
+**Total tests nuevos: 7** (AuthServiceTest: 4, AuthControllerTest: 2, AuthRefreshIT: 1)
 
 ---
 
@@ -611,21 +649,22 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] **CORS Configuration (preflight OPTIONS + CorsConfigurationSource)**
 
 ### Módulos en Progreso 🚧
-- [ ] **Auth Refresh Token** (Phase 1 Foundation ✅ | Phase 2-4 pendientes)
+- [x] **Auth Refresh Token** (Phases 1-4 Apply ✅ | Pending: Verify + Archive)
 - [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales)
 
 ### Tests
-- **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`
-- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests)
+- **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`, `AuthServiceTest` (4 tests)
+- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests), `AuthRefreshIT` (1 test)
+- **Controller tests**: `AuthControllerTest` (2 tests)
 - **CORS tests**: `CorsConfigTest` (1 test), `CorsSecurityTest` (3 tests)
-- **Total tests passing**: 10 unit tests + 8 integration tests + 4 CORS tests (verificados individualmente)
+- **Total tests passing**: **20** (14 existentes + 7 nuevos de auth-refresh-token)
 - **Coverage**: Pendiente configurar JaCoCo reports
 
 ### Branches Actuales
 ```
 main (producción)
 ├── develop (integración)
-    ├── feature/auth-refresh-token (actual - Phase 1 complete, Phase 2-4 pendientes)
+    ├── feature/auth-refresh-token (actual - Phases 1-4 Apply complete, Verify pendiente)
     ├── feature/cors-configuration (completado + mergeado a develop)
     ├── feature/sales (completado)
     ├── feature/production-batches (completado)
@@ -821,10 +860,9 @@ Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 3. **Spec** (6 reqs, 12 scenarios) → ✅
 4. **Design** (3 new, 2 modified) → ✅
 5. **Tasks** (12 tasks, 4 phases) → ✅
-6. **Apply Phase 1** (Foundation) → ✅ **← Estamos acá**
-7. **Apply Phase 2-4** → ❌ (pendiente)
-8. **Verify** → ❌ (pendiente)
-9. **Archive** → ❌ (pendiente)
+6. **Apply** (Phases 1-4) → ✅ **← ACÁ ESTAMOS**
+7. **Verify** → ❌ (pendiente)
+8. **Archive** → ❌ (pendiente)
 
 ### Commits del Sales Module
 | Commit | Descripción |
