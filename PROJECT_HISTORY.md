@@ -311,6 +311,87 @@ El browser cachea la respuesta del preflight OPTIONS por 1 hora, reduciendo late
 
 ---
 
+### Fase 7: Auth Refresh Token (Mayo 2026)
+
+#### Branch: `feature/auth-refresh-token`
+
+**Objetivo:** Implementar endpoint POST `/api/v1/auth/refresh` que permita renovar el access token JWT usando el refresh token (7 días) que ya se genera en login/register.
+
+**SDD Phases completadas:**
+- Explore → Propose → Spec (6 reqs, 12 scenarios) → Design → Tasks (12 tasks en 4 fases)
+
+**Phase 1: Foundation (este commit)**
+Archivos creados:
+
+1. **`user/dto/RefreshRequest.java`** (NUEVO)
+   - Record con `@NotBlank String refreshToken`
+   - Jakarta Validation para rechazar tokens vacíos antes de llegar al service
+
+2. **`user/exception/InvalidRefreshTokenException.java`** (NUEVO)
+   - Extiende `RuntimeException`
+   - Enum anidado `RefreshError`: EXPIRED, INVALID, USER_NOT_FOUND, MALFORMED
+   - Mensajes descriptivos en español para cada causa
+
+3. **`user/exception/AuthExceptionHandler.java`** (NUEVO)
+   - `@ControllerAdvice(basePackages = "com.mundolimpio.application.user")`
+   - `@Order(Ordered.HIGHEST_PRECEDENCE)` — se ejecuta ANTES que GlobalExceptionHandler
+   - Captura `InvalidRefreshTokenException` → HTTP 401 con `ErrorResponse`
+   - Fundamental: sin `@Order`, el catch-all de `GlobalExceptionHandler` devolvería 500
+
+**Decisión de diseño - `@Order` en Exception Handlers:**
+El `GlobalExceptionHandler` existente no tiene `@Order`, por lo que Spring le asigna la prioridad más baja (`LOWEST_PRECEDENCE`). El nuevo `AuthExceptionHandler` usa `@Order(Ordered.HIGHEST_PRECEDENCE)` para garantizar que Spring lo evalúe PRIMERO cuando la excepción ocurre en el módulo `user`. Si no, `InvalidRefreshTokenException` (que extiende `RuntimeException` → `Exception`) caería en el catch-all de `GlobalExceptionHandler` y devolvería 500.
+
+**Decisión de diseño - RefreshError enum anidado:**
+Se optó por un enum anidado dentro de `InvalidRefreshTokenException` (en vez de archivo separado) porque:
+- Cohesión semántica: la razón del error no tiene sentido fuera del contexto de la excepción
+- Menos archivos = menos complejidad
+- El enum solo se usa en el handler y el service, no se expone en la API
+
+**Phase 2: Core Implementation**
+Archivos modificados:
+
+1. **`AuthService.java`** (MODIFICADO)
+   - Agregado `CustomUserDetailsService` como dependencia (constructor injection)
+   - Agregado `@Value("${application.security.jwt.refresh-expiration}")` con default `:604800000`
+   - Reemplazado `604800000L` hardcodeado por `refreshExpiration` en `register()` y `login()`
+   - Nuevo método `refresh(RefreshRequest)`: extrae username → carga usuario via `CustomUserDetailsService` → valida token → genera nuevo par → retorna `LoginResponse`
+   - Error handling: `JwtException` → MALFORMED, `UsernameNotFoundException` → USER_NOT_FOUND, `!isTokenValid` → INVALID
+
+2. **`AuthController.java`** (MODIFICADO)
+   - Nuevo endpoint `POST /api/v1/auth/refresh` con Swagger docs
+   - Acepta `@Valid @RequestBody RefreshRequest`, delega a `authService.refresh()`
+   - Retorna 200 OK o 401 via AuthExceptionHandler
+
+**Phase 3: Testing**
+Archivos creados:
+
+1. **`AuthServiceTest.java`** (4 tests, Mockito)
+   - `validToken_ShouldReturnNewTokens`: token válido → LoginResponse con nuevos tokens
+   - `malformedToken_ShouldThrowMalformed`: token malformado → InvalidRefreshTokenException(MALFORMED)
+   - `deletedUser_ShouldThrowUserNotFound`: usuario eliminado → InvalidRefreshTokenException(USER_NOT_FOUND)
+   - `expiredToken_ShouldThrowInvalid`: token expirado → InvalidRefreshTokenException(INVALID)
+
+2. **`AuthControllerTest.java`** (2 tests, `@SpringBootTest` + `@MockBean`)
+   - `shouldReturn200WhenRefreshSucceeds`: POST /refresh con token válido → 200 OK
+   - `shouldReturn401WhenRefreshFails`: POST /refresh con token inválido → 401 UNAUTHORIZED
+
+3. **`AuthRefreshIT.java`** (1 test, `@SpringBootTest(RANDOM_PORT)` + TestRestTemplate)
+   - `shouldRefreshTokenSuccessfully`: register → login → POST /refresh → 200 + tokens válidos
+
+**Phase 4: Wiring**
+- Uncommented `refresh-expiration: 604800000` en `application.yml`
+- `mvn verify` → 20 tests, 0 failures ✅
+
+**Decisión de diseño - @Value default:**
+Se agregó `:604800000` como default en `@Value("${application.security.jwt.refresh-expiration:604800000}")` para que los tests pasaran ANTES de descomentar la propiedad en `application.yml`. En Phase 4 se descomentó, y Spring usa el valor del YAML en vez del default.
+
+**Decisión de diseño - AuthControllerTest con @SpringBootTest:**
+Se usó `@SpringBootTest` en vez de `@WebMvcTest` porque `@WebMvcTest` no carga los filters de seguridad correctamente (JwtAuthenticationFilter necesita JwtService). Como `/api/v1/auth/**` es `permitAll()`, el contexto completo permite testear el endpoint sin autenticación.
+
+**Total tests nuevos: 7** (AuthServiceTest: 4, AuthControllerTest: 2, AuthRefreshIT: 1)
+
+---
+
 ## Arquitectura
 
 ### Estructura de Capas
@@ -366,7 +447,11 @@ src/main/java/com/mundolimpio/application/
 │   ├── controller/AuthController.java
 │   ├── dto/RegisterRequest.java
 │   ├── dto/LoginRequest.java
-│   └── dto/LoginResponse.java
+│   ├── dto/LoginResponse.java
+│   ├── dto/RefreshRequest.java         # DTO para renovar access token
+│   └── exception/
+│       ├── InvalidRefreshTokenException.java
+│       └── AuthExceptionHandler.java   # @ControllerAdvice con @Order → 401
 │
 ├── security/                            # Configuración Seguridad
 │   ├── config/SecurityConfig.java
@@ -564,20 +649,24 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] **CORS Configuration (preflight OPTIONS + CorsConfigurationSource)**
 
 ### Módulos en Progreso 🚧
+- [x] **Auth Refresh Token** (Phases 1-4 Apply ✅ | Pending: Verify + Archive)
 - [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales)
 
 ### Tests
-- **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`
-- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests)
+- **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`, `AuthServiceTest` (4 tests)
+- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests), `AuthRefreshIT` (1 test)
+- **Controller tests**: `AuthControllerTest` (2 tests)
 - **CORS tests**: `CorsConfigTest` (1 test), `CorsSecurityTest` (3 tests)
-- **Total tests passing**: 10 unit tests + 8 integration tests + 4 CORS tests (verificados individualmente)
+- **Total tests passing**: **20** (14 existentes + 7 nuevos de auth-refresh-token)
 - **Coverage**: Pendiente configurar JaCoCo reports
 
 ### Branches Actuales
 ```
 main (producción)
 ├── develop (integración)
-    ├── feature/sales (actual - Phase 5 COMPLETE, Phase 6 pendiente)
+    ├── feature/auth-refresh-token (actual - Phases 1-4 Apply complete, Verify pendiente)
+    ├── feature/cors-configuration (completado + mergeado a develop)
+    ├── feature/sales (completado)
     ├── feature/production-batches (completado)
     ├── feature/bulk-products (completado)
     └── feature/product-module (completado)
@@ -755,16 +844,25 @@ main (producción)
 
 Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 
-1. **Explore** → Investigar requerimientos ✅ (ventas)
-2. **Propose** → Propuesta de cambio ✅ (ventas)
-3. **Spec** → Especificaciones (Given/When/Then) ✅ (ventas)
-4. **Design** → Diseño técnico ✅ (ventas)
-5. **Tasks** → Tareas de implementación ✅ (ventas)
-6. **Apply** → Codear ✅ (Phase 1-5 completo, Phase 6 en progreso)
-7. **Verify** → Verificar contra specs ❌ (pendiente)
-8. **Archive** → Cerrar change ❌ (pendiente)
+### Sales Module
+1. **Explore** → ✅
+2. **Propose** → ✅
+3. **Spec** → ✅
+4. **Design** → ✅
+5. **Tasks** → ✅
+6. **Apply** → ✅ (Phase 1-5 completo, Phase 6 en progreso)
+7. **Verify** → ❌ (pendiente)
+8. **Archive** → ❌ (pendiente)
 
-La memoria persiste en **Engram**, lo que permite retomar en otra PC sin perder contexto.
+### Auth Refresh Token (Sprint 1)
+1. **Explore** → ✅
+2. **Propose** → ✅
+3. **Spec** (6 reqs, 12 scenarios) → ✅
+4. **Design** (3 new, 2 modified) → ✅
+5. **Tasks** (12 tasks, 4 phases) → ✅
+6. **Apply** (Phases 1-4) → ✅ **← ACÁ ESTAMOS**
+7. **Verify** → ❌ (pendiente)
+8. **Archive** → ❌ (pendiente)
 
 ### Commits del Sales Module
 | Commit | Descripción |
@@ -778,9 +876,10 @@ La memoria persiste en **Engram**, lo que permite retomar en otra PC sin perder 
 - **JWT Bug**: `JwtAuthenticationFilter` tenía `username == null` en vez de `!= null`. La autenticación no funcionaba desde el inicio.
 - **401 vs 403**: Spring Security retorna 403 por defecto para requests no autenticados. Se agregó `HttpStatusEntryPoint(UNAUTHORIZED)` para comportamiento REST correcto.
 - **GlobalExceptionHandler**: Faltaban handlers para `IllegalArgumentException` (400), `AccessDeniedException` (403), y `OptimisticLockingFailureException` (409).
+- **@Order en Exception Handlers**: Sin `@Order(Ordered.HIGHEST_PRECEDENCE)`, el `GlobalExceptionHandler` (catch-all Exception → 500) captura `InvalidRefreshTokenException` antes que `AuthExceptionHandler`.
 
 ---
 
-**Última actualización:** Mayo 2026
+**Última actualización:** 2026-05-09 (Sprint 1: Auth Refresh Token — Phase 1 Foundation)
 **Mantenido por:** zotel1
 **IA colaboradora:** Gentle AI (big-pickle)
