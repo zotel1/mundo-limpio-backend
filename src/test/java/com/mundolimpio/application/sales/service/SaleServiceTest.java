@@ -1,11 +1,23 @@
 package com.mundolimpio.application.sales.service;
 
+import com.mundolimpio.application.bulkproduct.domain.BulkProduct;
+import com.mundolimpio.application.bulkproduct.repository.BulkProductRepository;
+import com.mundolimpio.application.inventory.service.InventoryService;
+import com.mundolimpio.application.product.domain.Product;
+import com.mundolimpio.application.product.repository.ProductRepository;
+import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
+import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
 import com.mundolimpio.application.sales.dto.SaleRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ActiveProfiles;
+
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 
 /**
  * Tests unitarios para SaleService.
@@ -26,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - Phase 5: Tests de concurrencia para verificar OptimisticLocking.
  */
 @SpringBootTest
+@ActiveProfiles("test")
 class SaleServiceTest {
 
     /**
@@ -34,6 +47,27 @@ class SaleServiceTest {
      */
     @Autowired
     private SaleService saleService;
+
+    /**
+     * Mock de InventoryService para verificar la integracion sin BD real de inventory.
+     *
+     * POR QUE @MockBean en vez de @Mock:
+     * - SaleService usa @SpringBootTest (contexto completo de Spring).
+     * - @MockBean reemplaza el InventoryService real en el contexto de Spring
+     *   por un mock, permitiendo verificar interacciones desde SaleService.
+     * - @Mock (Mockito) no Spring-aware no funcionaria con @SpringBootTest.
+     */
+    @MockBean
+    private InventoryService inventoryService;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private BulkProductRepository bulkProductRepository;
+
+    @Autowired
+    private ProductionBatchRepository productionBatchRepository;
 
     /**
      * Test 1.1 (Phase 1 RED): Verifica que SaleService se puede inyectar.
@@ -103,5 +137,51 @@ class SaleServiceTest {
         }
         
         assertThat(true).isTrue(); // Placeholder para fase GREEN
+    }
+
+    // ==================== INVENTORY INTEGRATION TESTS ====================
+
+    /**
+     * Test: createSale debe llamar a InventoryService.decrementStock
+     * despues de procesar la venta.
+     *
+     * QUE VERIFICA:
+     * - inventoryService.decrementStock() es llamado con el productId y
+     *   la cantidad vendida (request.quantity()).
+     * - La llamada ocurre DENTRO del mismo @Transactional, despues de
+     *   guardar la venta y sus items.
+     *
+     * POR QUE este test:
+     * - Verifica la integracion entre Sales e Inventory.
+     * - Al crear una venta, el inventory module debe reflejar el decremento
+     *   del stock del producto vendido.
+     *
+     * DIFERENCIA con el FIFO de SaleService:
+     * - SaleService descuenta stock de lotes individuales (FIFO).
+     * - InventoryService descuenta el stock TOTAL del producto (1:1).
+     * - Ambos se actualizan en la misma transaccion @Transactional.
+     */
+    @Test
+    void createSale_ShouldCallInventoryServiceDecrementStock() {
+        // Given: un producto, materia prima y lote con stock disponible
+        Product product = new Product(null, "SKU-INV-TEST", "Producto Inventory Test", BigDecimal.TEN, true);
+        product = productRepository.save(product);
+
+        BulkProduct bulkProduct = new BulkProduct(
+                null, "Bulk Test", new BigDecimal("100"), new BigDecimal("5.0"), new BigDecimal("1.0"));
+        bulkProduct = bulkProductRepository.save(bulkProduct);
+
+        ProductionBatch batch = new ProductionBatch(
+                product, bulkProduct,
+                new BigDecimal("50"), new BigDecimal("50"),
+                new BigDecimal("10.0"), new BigDecimal("50"));
+        batch = productionBatchRepository.save(batch);
+
+        // When: creamos una venta de 10 unidades
+        SaleRequest request = new SaleRequest(product.getId(), BigDecimal.TEN);
+        saleService.createSale(request);
+
+        // Then: debe llamar a inventoryService.decrementStock con el productId y la cantidad
+        verify(inventoryService).decrementStock(product.getId(), BigDecimal.TEN);
     }
 }
