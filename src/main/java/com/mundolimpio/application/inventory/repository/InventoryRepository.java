@@ -2,6 +2,7 @@ package com.mundolimpio.application.inventory.repository;
 
 import com.mundolimpio.application.inventory.domain.Inventory;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
@@ -22,8 +23,8 @@ import java.util.Optional;
  *   - ProductRepository tiene findBySku() y existsBySku() (búsqueda
  *     por identificador de catálogo).
  *   - InventoryRepository tiene findByProductId() (búsqueda por FK
- *     del producto asociado) y findByCurrentStockLessThan() (consulta
- *     específica para low-stock alert).
+ *     del producto asociado) y findLowStockInventories() (consulta
+ *     específica para low-stock alert usando @Query).
  */
 @Repository
 public interface InventoryRepository extends JpaRepository<Inventory, Long> {
@@ -40,10 +41,19 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     /**
      * Busca todos los inventarios cuyo stock actual está por debajo
-     * del umbral mínimo. Usado para la funcionalidad de low-stock alert.
+     * de su propio umbral mínimo. Usado para la funcionalidad de
+     * low-stock alert.
      *
-     * @param threshold El valor contra el que comparar current_stock
-     * @return Lista de inventarios con stock bajo
+     * POR QUE @Query en vez de method derivation:
+     * - Spring Data JPA no puede derivar "currentStock < minStockThreshold"
+     *   (comparación entre dos columnas de la misma entidad) desde
+     *   el nombre del método.
+     * - findByCurrentStockLessThan(BigDecimal) compara contra un valor
+     *   fijo, no contra otra columna.
+     * - @Query con JPQL permite la comparación directa entre columnas.
+     *
+     * @return Lista de inventarios con stock por debajo del umbral
      */
-    List<Inventory> findByCurrentStockLessThan(BigDecimal threshold);
+    @Query("SELECT i FROM Inventory i WHERE i.currentStock < i.minStockThreshold")
+    List<Inventory> findLowStockInventories();
 }
