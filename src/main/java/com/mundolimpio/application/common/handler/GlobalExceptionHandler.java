@@ -8,7 +8,8 @@ package com.mundolimpio.application.common.handler;
 import com.mundolimpio.application.common.dto.ErrorResponse;
 import com.mundolimpio.application.common.exception.ProductAlreadyExistsException;
 import com.mundolimpio.application.common.exception.ProductNotFoundException;
-import org.apache.coyote.Response;
+import com.mundolimpio.application.inventory.exception.InventoryNotFoundException;
+import com.mundolimpio.application.inventory.exception.InvalidAdjustmentException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -87,6 +88,56 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = new ErrorResponse(
                 "VALIDATION_ERROR",
                 "Validation failed: " + validationErrors,
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    /*
+     * Maneja InventoryNotFoundException (404 - Not Found)
+     * Se lanza cuando se consulta el inventario de un productId
+     * que no existe en la tabla inventory.
+     *
+     * POR QUE código "PRODUCT_NOT_FOUND":
+     * - Es consistente con ProductNotFoundException que también usa
+     *   "PRODUCT_NOT_FOUND". Desde la perspectiva del cliente, no
+     *   importa si el producto no existe o no tiene inventario.
+     * - El mensaje incluye el productId para debugging.
+     */
+    @ExceptionHandler(InventoryNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleInventoryNotFound(
+            InventoryNotFoundException ex,
+            WebRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "PRODUCT_NOT_FOUND",
+                ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    /*
+     * Maneja InvalidAdjustmentException (400 - Bad Request)
+     * Se lanza cuando un ajuste de inventario deja el stock en
+     * negativo o viola alguna regla de negocio del dominio.
+     *
+     * POR QUE código "INSUFFICIENT_STOCK":
+     * - El cliente necesita saber que el error es por stock insuficiente
+     *   (no un error de validación genérico como "VALIDATION_ERROR").
+     * - 400 es el status correcto: el cliente envió una solicitud que
+     *   no puede ser procesada por su contenido semántico.
+     */
+    @ExceptionHandler(InvalidAdjustmentException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidAdjustment(
+            InvalidAdjustmentException ex,
+            WebRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "INSUFFICIENT_STOCK",
+                ex.getMessage(),
                 LocalDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
         );
