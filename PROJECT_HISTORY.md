@@ -476,6 +476,107 @@ Se usó `@SpringBootTest` en vez de `@WebMvcTest` porque `@WebMvcTest` no carga 
 
 ---
 
+### Fase 9: Gestión de Usuarios — Users Management (Mayo 2026)
+
+#### Branch: `feature/users-management`
+
+**3 stacked PRs: Foundation → Core → Polish**
+
+**PR #1 — Foundation (Service + DTOs + Exceptions):**
+Archivos creados:
+
+1. **`user/service/UserManagementService.java`** (NUEVO)
+   - Servicio separado de AuthService (SRP)
+   - findAll, findById, changeRole (valida rol, self-demotion), resetPassword (BCrypt)
+   - @Transactional en métodos de escritura
+
+2. **`user/dto/UserResponse.java`** (NUEVO)
+   - Record: id, username, role, createdAt — sin password
+
+3. **`user/dto/ChangeRoleRequest.java`** (NUEVO)
+   - Record: @NotBlank String newRole
+
+4. **`user/dto/ResetPasswordRequest.java`** (NUEVO)
+   - Record: @NotBlank @Size(min=6) String newPassword
+
+5. **`user/mapper/UserMapper.java`** (NUEVO)
+   - @Component, User → UserResponse (sigue patrón InventoryMapper)
+
+6. **`user/exception/UserNotFoundException.java`** (NUEVO)
+   - RuntimeException con Long id, mensaje "User not found with ID: {id}"
+
+7. **`user/exception/UserExceptionHandler.java`** (NUEVO)
+   - @ControllerAdvice(basePackages = "com.mundolimpio.application.user")
+   - @Order(Ordered.HIGHEST_PRECEDENCE) — antes que GlobalExceptionHandler
+   - Captura UserNotFoundException → 404 USER_NOT_FOUND
+   - Captura IllegalArgumentException → 400 con código del mensaje (INVALID_ROLE, SELF_DEMOTION, INVALID_PASSWORD)
+   - Sigue el patrón exacto de AuthExceptionHandler
+
+8. **`test/.../user/service/UserManagementServiceTest.java`** (NUEVO)
+   - Mockito: 10 tests (findAll, findById, changeRole 4 casos, resetPassword, etc.)
+
+**PR #2 — Controller (Core):**
+Archivos creados/modificados:
+
+1. **`user/controller/UserManagementController.java`** (NUEVO)
+   - 4 endpoints ADMIN-only con @PreAuthorize("hasRole('ADMIN')")
+   - GET /api/v1/users, GET /api/v1/users/{id}, PATCH /api/v1/users/{id}/role, PATCH /api/v1/users/{id}/password
+   - Self-demotion guard via SecurityContextHolder.getContext().getAuthentication()
+   - Swagger/OpenAPI annotations (@Tag, @Operation, @ApiResponses)
+   - Sigue patrón InventoryController
+
+2. **`common/handler/GlobalExceptionHandler.java`** (MODIFICADO)
+   - Agregado @ExceptionHandler(UserNotFoundException.class) → 404 USER_NOT_FOUND (fallback)
+
+3. **`test/.../user/controller/UserManagementControllerTest.java`** (NUEVO)
+   - @SpringBootTest + MockMvc: 12 tests (200, 401, 403, 400, 404 en todos los endpoints)
+
+**PR #3 — Polish (Integration test + Docs):**
+Archivos creados/modificados:
+
+1. **`test/.../user/controller/UserManagementIT.java`** (NUEVO)
+   - @SpringBootTest(RANDOM_PORT) + TestRestTemplate: 11 tests de integración
+   - Crea usuario ADMIN en DB, genera JWT real via JwtService
+   - Prueba lista completa de usuarios con 2 registros y solo admin
+   - Prueba detalle de usuario (existente e inexistente → 404)
+   - Prueba cambio de rol (éxito, rol inválido, autodemoción, usuario inexistente)
+   - Prueba reset de password (verifica login con nueva contraseña)
+   - Verifica que OPERATOR recibe 403 en endpoint ADMIN
+   - Requiere httpclient5 (test scope) para soporte HTTP PATCH en TestRestTemplate
+
+2. **`pom.xml`** (MODIFICADO)
+   - Agregada dependencia httpclient5 (test scope) para soporte PATCH en TestRestTemplate
+
+3. **README.md** y **PROJECT_HISTORY.md** actualizados
+
+**Decisiones de diseño — Users Management:**
+
+**Separación de AuthService (SRP):**
+- AuthService maneja register, login, refresh (flujos públicos/de autenticación)
+- UserManagementService maneja findAll, findById, changeRole, resetPassword (operaciones ADMIN)
+- Si se mezclaran, el controlador tendría endpoints públicos y ADMIN-only mezclados
+
+**Self-demotion guard en controller, no en service:**
+- Controller extrae currentUserId del SecurityContextHolder y lo pasa al service
+- El service no depende de SecurityContext (acoplamiento)
+- El service recibe el ID como parámetro y se mantiene testeable con Mockito
+
+**Validación en cascada:**
+- Jakarta Validation (@NotBlank, @Size) en DTOs: errores estructurales → VALIDATION_ERROR
+- Service valida reglas de negocio: rol válido, autodemoción → códigos específicos (INVALID_ROLE, SELF_DEMOTION)
+- UserExceptionHandler captura ambas capas con @Order(HIGHEST_PRECEDENCE)
+
+**PATCH requiere Apache HttpClient5:**
+- HttpURLConnection no soporta PATCH
+- TestRestTemplate usa SimpleClientHttpRequestFactory por defecto
+- Se agregó httpclient5 (test scope) y se configuró HttpComponentsClientHttpRequestFactory en @BeforeEach
+- Alternativa considerada: reflection para forzar PATCH en HttpURLConnection, descartada por ser frágil
+
+**Tests totales nuevos: 33** (UserManagementServiceTest: 10, UserManagementControllerTest: 12, UserManagementIT: 11)
+**Coverage antes: 61 tests → después: 73 tests (sin IT) o 84 (con IT)**
+
+---
+
 ## Arquitectura
 
 ### Estructura de Capas
@@ -537,19 +638,27 @@ src/main/java/com/mundolimpio/application/
 │       ├── InventoryNotFoundException.java
 │       └── InvalidAdjustmentException.java
 │
-├── user/                                # Módulo Usuarios
+├── user/                                # Módulo Usuarios + Gestión
 │   ├── domain/User.java
 │   ├── domain/Role.java                # Enum: ADMIN, OPERATOR
 │   ├── repository/UserRepository.java
 │   ├── service/AuthService.java
+│   ├── service/UserManagementService.java  # Gestión ADMIN: findAll, changeRole, resetPassword
 │   ├── controller/AuthController.java
+│   ├── controller/UserManagementController.java  # 4 endpoints ADMIN-only
 │   ├── dto/RegisterRequest.java
 │   ├── dto/LoginRequest.java
 │   ├── dto/LoginResponse.java
 │   ├── dto/RefreshRequest.java         # DTO para renovar access token
+│   ├── dto/UserResponse.java           # DTO para respuestas de usuario (sin password)
+│   ├── dto/ChangeRoleRequest.java      # DTO para cambio de rol
+│   ├── dto/ResetPasswordRequest.java   # DTO para reset de contraseña
+│   ├── mapper/UserMapper.java          # User → UserResponse
 │   └── exception/
 │       ├── InvalidRefreshTokenException.java
-│       └── AuthExceptionHandler.java   # @ControllerAdvice con @Order → 401
+│       ├── AuthExceptionHandler.java   # @ControllerAdvice con @Order → 401
+│       ├── UserNotFoundException.java  # RuntimeException para usuario no encontrado
+│       └── UserExceptionHandler.java   # @ControllerAdvice con @Order → 404/400
 │
 ├── security/                            # Configuración Seguridad
 │   ├── config/SecurityConfig.java
@@ -746,17 +855,20 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] **Módulo de Ventas (FIFO + @Version + 8 integration tests)**
 - [x] **CORS Configuration (preflight OPTIONS + CorsConfigurationSource)**
 - [x] **Módulo de Inventario (stock total + ajustes + integración con ventas/producción)**
+- [x] **Módulo de Gestión de Usuarios (Users Management)** — ADMIN endpoints + tests + docs
 
 ### Módulos en Progreso 🚧
 - [x] **Auth Refresh Token** (Phases 1-4 Apply ✅ | Pending: Verify + Archive)
+- [x] **Users Management** (SDD Apply PR-3 Complete ✅ | Pending: Verify + Archive)
 - [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales, Inventory)
 
 ### Tests
-- **Unit tests**: `ProductionBatchServiceTest` (4 tests), `SaleMapperTest`, `SaleServiceTest` (5 tests), `AuthServiceTest` (4 tests), `InventoryServiceTest` (10 tests)
-- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests), `AuthRefreshIT` (1 test)
-- **Controller tests**: `AuthControllerTest` (2 tests), `InventoryControllerTest` (7 tests)
+- **Unit tests**: `ProductionBatchServiceTest` (4 tests), `SaleMapperTest` (2 tests), `SaleServiceTest` (5 tests), `AuthServiceTest` (4 tests), `InventoryServiceTest` (10 tests), `UserManagementServiceTest` (10 tests)
+- **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests), `AuthRefreshIT` (1 test), `UserManagementIT` (11 tests)
+- **Controller tests**: `AuthControllerTest` (2 tests), `InventoryControllerTest` (7 tests), `UserManagementControllerTest` (12 tests)
 - **CORS tests**: `CorsConfigTest` (1 test), `CorsSecurityTest` (3 tests)
-- **Total tests passing**: **39** (37 existentes + 2 nuevos de integración inventory)
+- **Total tests (surefire)**: **73** (61 existentes + 12 nuevos controller tests)
+- **Total tests con IT**: **84** (73 + 11 integration tests)
 - **Coverage**: Pendiente configurar JaCoCo reports
 
 ### Branches Actuales
@@ -764,6 +876,7 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 main (producción)
 ├── develop (integración)
     ├── feature/auth-refresh-token (actual - Phases 1-4 Apply complete, Verify pendiente)
+    ├── feature/users-management (PR #3 Polish - completado | Verify pendiente)
     ├── feature/cors-configuration (completado + mergeado a develop)
     ├── feature/sales (completado)
     ├── feature/production-batches (completado)
@@ -801,12 +914,7 @@ main (producción)
    - [ ] Reporte de ventas
    - [ ] Endpoints con métricas para dashboard
 
-5. **Gestión de Usuarios**
-   - [ ] Endpoint para listar usuarios (ADMIN)
-   - [ ] Cambio de rol (ADMIN promueve OPERATOR)
-   - [ ] Reset de password
-
-6. **CI/CD**
+5. **CI/CD**
    - [ ] Afinar GitHub Actions (actualmente solo build + test)
    - [ ] Deploy automático a staging/producción
    - [ ] SonarCloud para análisis de código
@@ -840,11 +948,12 @@ main (producción)
 - [ ] Patrones: Observer pattern (publish/subscribe), Strategy pattern para canales (email, SMS, push)
 - [ ] Integración con el módulo de Inventory
 
-**Módulo: Users Management (Gestión de Usuarios - ADMIN)**
-- [ ] CRUD de usuarios por parte de ADMIN
-- [ ] Asignación de roles dinámica
-- [ ] Endpoint: GET `/api/v1/users`, PUT `/api/v1/users/{id}/role`
-- [ ] Patrones: Consistente con módulos existentes
+**Módulo: Users Management (Gestión de Usuarios - ADMIN)** ✅ COMPLETADO
+- [x] CRUD de usuarios por parte de ADMIN (listar, detalle, cambio rol, reset password)
+- [x] Asignación de roles dinámica (ADMIN ↔ OPERATOR via PATCH /api/v1/users/{id}/role)
+- [x] Endpoints: GET `/api/v1/users`, GET `/api/v1/users/{id}`, PATCH `/api/v1/users/{id}/role`, PATCH `/api/v1/users/{id}/password`
+- [x] Patrones: Consistente con módulos existentes (Controller → Service → Repository → Domain, DTOs como records, @Component mapper, @ControllerAdvice con @Order)
+- [x] Stack: 3 PRs (Foundation → Core → Polish), 33 tests nuevos
 
 **Módulo: Audit Log (Registro de Actividad)**
 - [ ] Log de quién hizo qué y cuándo
@@ -857,7 +966,7 @@ main (producción)
 
 ### Mejoras Técnicas Pendientes
 - [ ] Inicializar SDD formalmente (`openspec/`)
-- [ ] Agregar integration tests para auth
+- [x] Agregar integration tests para user management
 - [ ] Agregar unit tests para services (no solo integration)
 - [ ] Implementar pagination en endpoints de lista
 - [ ] Agregar versionado de API más robusto
@@ -884,7 +993,8 @@ main (producción)
 
 ### Orden Recomendado de Implementación Futura
 1. ~~**Inventory Module**~~ ✅ **COMPLETADO**
-2. **Unit Tests** ← Coverage de services (ProductService, BulkProductService, ProductionBatchService)
+2. ~~**Users Management**~~ ✅ **COMPLETADO**
+3. **Unit Tests** ← Coverage de services (ProductService, BulkProductService, ProductionBatchService)
 3. **Pagination** → Todos los endpoints de lista
 4. **Reporting Module** ← Reportes para el admin
 5. **Notifications** ← Alertas de stock bajo
@@ -972,6 +1082,16 @@ Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
    - Task 3.3: Update README.md
    - Task 3.4: Update PROJECT_HISTORY.md
 
+### Users Management (Sprint 3)
+1. **Explore** → ✅
+2. **Propose** → ✅
+3. **Spec** (4 reqs, 12+ scenarios) → ✅
+4. **Design** (8 new, 1 modified, stacked PR plan) → ✅
+5. **Tasks** (14 tasks, 3 phases) → ✅
+6. **Apply** (Phases 1-3, 3 stacked PRs) → ✅ **← ACÁ ESTAMOS**
+7. **Verify** → ❌ (pendiente)
+8. **Archive** → ❌ (pendiente)
+
 ### Commits del Sales Module
 | Commit | Descripción |
 |--------|-------------|
@@ -988,6 +1108,6 @@ Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 
 ---
 
-**Última actualización:** 2026-05-12 (Sprint 2: Inventory Module — PR #3 Integration)
+**Última actualización:** 2026-05-13 (Sprint 3: Users Management — PR #3 Polish)
 **Mantenido por:** zotel1
 **IA colaboradora:** Gentle AI (big-pickle)
