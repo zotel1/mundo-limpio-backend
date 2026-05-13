@@ -23,6 +23,7 @@ src/main/java/com/mundolimpio/application/
 ├── bulkproduct/       # Gestión de materia prima
 ├── productionbatch/    # Lotes de producción (FIFO)
 ├── sales/             # Ventas (FIFO, FIFO discount)
+├── inventory/         # Inventario de productos terminados (stock total)
 ├── user/              # Usuarios y autenticación
 ├── security/          # Configuración JWT y Spring Security
 └── common/            # Excepciones y DTOs compartidos
@@ -66,6 +67,15 @@ Cada módulo sigue el patrón **Controller → Service → Repository → Domain
 | POST | `/` | Crear lote (producción) | ADMIN |
 | GET | `/product/{productId}` | Lotes por producto | ADMIN |
 | GET | `/{id}` | Obtener por ID | ADMIN |
+
+### Inventario (`/api/v1/inventory`)
+| Método | Endpoint | Descripción | Rol |
+|--------|----------|-------------|-----|
+| GET | `/{productId}` | Obtener stock de un producto | ADMIN |
+| GET | `/low-stock` | Productos con stock bajo el umbral mínimo | ADMIN |
+| POST | `/{productId}/adjust` | Ajuste manual con auditoría | ADMIN |
+
+**Flujo de integración**: Al crear un lote de producción, `inventory.incrementStock()` se llama automáticamente. Al crear una venta, `inventory.decrementStock()` se llama automáticamente. Ambos dentro de la misma transacción.
 
 ### Ventas (`/api/v1/sales`)
 | Método | Endpoint | Descripción | Rol |
@@ -155,8 +165,10 @@ Tests existentes:
 - `ProductionBatchControllerIT` - Integración de lotes
 - `ProductionBatchServiceTest` - Unitario de servicio
 - `SaleControllerIT` - 8 integration tests (security + FIFO + stock)
-- `SaleServiceTest` - 4 tests de servicio
+- `SaleServiceTest` - 5 tests de servicio (incluye integración con Inventory)
 - `SaleMapperTest` - 2 tests de mapper
+- `InventoryControllerTest` - 7 tests de controlador (security + endpoints)
+- `InventoryServiceTest` - 10 tests unitarios (CRUD + ajustes + concurrencia)
 - `CorsConfigTest` - Verificación del bean CorsConfigurationSource
 - `CorsSecurityTest` - 3 tests de integración CORS (preflight, origen no permitido, GET con Origin)
 
@@ -183,6 +195,7 @@ Migraciones en `src/main/resources/db/migration/` (Flyway):
 ## Siguientes Pasos
 
 - [x] ~~Módulo de Ventas (FIFO para descuento de stock)~~ — **COMPLETADO**
+- [x] ~~Módulo de Inventario (stock total de productos terminados)~~ — **COMPLETADO**
 - [ ] **Auth Refresh Token** — Phase 2-4 (Core Implementation + Testing + Wiring)
 - [ ] Unit tests para todos los services (ProductService, BulkProductService)
 - [ ] Reportes de inventario y producción

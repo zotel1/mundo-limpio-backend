@@ -205,15 +205,15 @@ public class InventoryService {
     // ======================== INTEGRATION METHODS ========================
 
     /**
-     * Incrementa el stock de un producto (package-private para integración).
+     * Incrementa el stock de un producto (public para integración entre módulos).
      *
      * QUE HACE: Suma quantity al currentStock actual.
      * Si el producto aún no tiene fila en inventory, la crea con
      * currentStock = quantity (find-or-create pattern).
      *
-     * POR QUE package-private (sin public):
-     * - Solo debe llamarse desde ProductionBatchService dentro del
-     *   mismo @Transactional al crear un lote de producción.
+     * POR QUE public en vez de package-private:
+     * - ProductionBatchService está en otro package (productionbatch.service)
+     *   y necesita llamar a incrementStock al crear un lote.
      * - No debe exponerse como endpoint REST: los incrementos automáticos
      *   no pasan por adjustStock() porque no necesitan auditoría manual
      *   (la auditoría es el ProductionBatch mismo).
@@ -222,7 +222,7 @@ public class InventoryService {
      *
      * DIFERENCIA con adjustStock:
      * - adjustStock: público, con auditoría, recibe AdjustmentRequest.
-     * - incrementStock: package-private, SIN auditoría, solo quantity.
+     * - incrementStock: público para integración, SIN auditoría, solo quantity.
      * - incrementStock usa find-or-create (por si el producto no tiene
      *   inventario al crearse el primer lote).
      *
@@ -230,7 +230,7 @@ public class InventoryService {
      * @param quantity  Cantidad a incrementar (siempre positiva)
      */
     @Transactional
-    void incrementStock(Long productId, BigDecimal quantity) {
+    public void incrementStock(Long productId, BigDecimal quantity) {
         // Find-or-create: si no existe inventario, lo creamos con
         // Product como proxy (evita query adicional a la tabla products).
         // POR QUE usamos getReferenceById: devuelve un proxy de JPA sin
@@ -251,14 +251,16 @@ public class InventoryService {
     }
 
     /**
-     * Decrementa el stock de un producto (package-private para integración).
+     * Decrementa el stock de un producto (public para integración entre módulos).
      *
      * QUE HACE: Resta quantity del currentStock actual.
      * Si el stock quedaría negativo, lanza InvalidAdjustmentException.
      *
-     * POR QUE package-private (sin public):
-     * - Solo debe llamarse desde SaleService dentro del mismo @Transactional.
-     * - Misma razón que incrementStock: no necesita endpoint REST propio.
+     * POR QUE public en vez de package-private:
+     * - SaleService está en otro package (sales.service) y necesita llamar
+     *   a decrementStock al crear una venta.
+     * - No debe exponerse como endpoint REST: los decrementos automáticos
+     *   no pasan por adjustStock() porque su auditoría está en la venta misma.
      *
      * DIFERENCIA con incrementStock:
      * - incrementStock usa find-or-create (el producto puede no tener
@@ -272,7 +274,7 @@ public class InventoryService {
      * @throws InvalidAdjustmentException si el stock quedaría negativo
      */
     @Transactional
-    void decrementStock(Long productId, BigDecimal quantity) {
+    public void decrementStock(Long productId, BigDecimal quantity) {
         // Buscar inventario existente
         // POR QUE NO usamos find-or-create: si no hay inventario, no
         // hay stock que decrementar. Es un error de integración.

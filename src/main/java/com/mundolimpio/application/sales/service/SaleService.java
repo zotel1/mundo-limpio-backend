@@ -1,5 +1,6 @@
 package com.mundolimpio.application.sales.service;
 
+import com.mundolimpio.application.inventory.service.InventoryService;
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
 import com.mundolimpio.application.sales.domain.Sale;
@@ -46,6 +47,7 @@ public class SaleService {
     private final SaleItemRepository saleItemRepository;
     private final ProductionBatchRepository productionBatchRepository;
     private final SaleMapper saleMapper;
+    private final InventoryService inventoryService;
 
     /**
      * Constructor con inyección de dependencias.
@@ -54,11 +56,13 @@ public class SaleService {
     public SaleService(SaleRepository saleRepository,
                        SaleItemRepository saleItemRepository,
                        ProductionBatchRepository productionBatchRepository,
-                       SaleMapper saleMapper) {
+                       SaleMapper saleMapper,
+                       InventoryService inventoryService) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
         this.productionBatchRepository = productionBatchRepository;
         this.saleMapper = saleMapper;
+        this.inventoryService = inventoryService;
     }
 
     /**
@@ -167,6 +171,26 @@ public class SaleService {
             // y retornar la respuesta mapeada a DTO.
             Sale savedSale = saleRepository.save(sale);
             log.info("Sale created successfully with ID: {}", savedSale.getId());
+
+            // ===== INVENTORY INTEGRATION =====
+            // QUE HACE: Al crear una venta, decrementamos el inventario del producto
+            // vendido. La cantidad vendida (request.quantity()) se resta del
+            // currentStock del Inventory de ese producto.
+            //
+            // POR QUE: El module de Inventory trackea el stock disponible de cada
+            // producto de forma independiente al stock por lotes (FIFO). Cada venta
+            // consume stock del inventario total disponible.
+            //
+            // DIFERENCIA con el FIFO de SaleService:
+            // - SaleService descuenta stock de lotes individuales (FIFO) usando
+            //   production_batches.current_stock y @Version para concurrencia.
+            // - InventoryService decrementa el stock TOTAL del producto (1:1)
+            //   usando inventory.current_stock y @Version propio.
+            // - Ambos se actualizan en la misma transacción @Transactional para
+            //   mantener consistencia: si falla uno, se revierte el otro.
+            // - Antes del module de Inventory, el stock solo se descontaba de
+            //   production_batches.current_stock en FIFO.
+            inventoryService.decrementStock(request.productId(), request.quantity());
 
             return saleMapper.toResponse(savedSale);
         } catch (OptimisticLockingFailureException e) {
