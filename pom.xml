@@ -107,6 +107,17 @@
 			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Apache HttpClient5 for PATCH support in TestRestTemplate -->
+		<!-- POR QUÉ: HttpURLConnection (JDK) no soporta el método HTTP PATCH.
+		     TestRestTemplate usa SimpleClientHttpRequestFactory por defecto,
+		     que wrappea HttpURLConnection. Con httpclient5 en classpath,
+		     TestRestTemplate cambia automáticamente a HttpComponentsClientHttpRequestFactory
+		     que sí soporta PATCH. -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>

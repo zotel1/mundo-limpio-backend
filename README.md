@@ -75,7 +75,13 @@ Cada módulo sigue el patrón **Controller → Service → Repository → Domain
 | GET | `/low-stock` | Productos con stock bajo el umbral mínimo | ADMIN |
 | POST | `/{productId}/adjust` | Ajuste manual con auditoría | ADMIN |
 
-**Flujo de integración**: Al crear un lote de producción, `inventory.incrementStock()` se llama automáticamente. Al crear una venta, `inventory.decrementStock()` se llama automáticamente. Ambos dentro de la misma transacción.
+### Gestión de Usuarios (`/api/v1/users`)
+| Método | Endpoint | Descripción | Rol |
+|--------|----------|-------------|-----|
+| GET | `/` | Listar todos los usuarios | ADMIN |
+| GET | `/{id}` | Obtener usuario por ID | ADMIN |
+| PATCH | `/{id}/role` | Cambiar rol de usuario (ADMIN/OPERATOR) | ADMIN |
+| PATCH | `/{id}/password` | Resetear contraseña (BCrypt) | ADMIN |
 
 ### Ventas (`/api/v1/sales`)
 | Método | Endpoint | Descripción | Rol |
@@ -171,6 +177,7 @@ Tests existentes:
 - `InventoryServiceTest` - 10 tests unitarios (CRUD + ajustes + concurrencia)
 - `CorsConfigTest` - Verificación del bean CorsConfigurationSource
 - `CorsSecurityTest` - 3 tests de integración CORS (preflight, origen no permitido, GET con Origin)
+- `UserManagementIT` - 11 tests de integración gestión de usuarios (listar, detalle, cambio rol, reset password)
 
 ## Documentación API
 
@@ -196,6 +203,7 @@ Migraciones en `src/main/resources/db/migration/` (Flyway):
 
 - [x] ~~Módulo de Ventas (FIFO para descuento de stock)~~ — **COMPLETADO**
 - [x] ~~Módulo de Inventario (stock total de productos terminados)~~ — **COMPLETADO**
+- [x] ~~**Gestión de Usuarios (Users Management)** — ADMIN endpoints: listar, detalle, cambio rol, reset password~~ — **COMPLETADO**
 - [ ] **Auth Refresh Token** — Phase 2-4 (Core Implementation + Testing + Wiring)
 - [ ] Unit tests para todos los services (ProductService, BulkProductService)
 - [ ] Reportes de inventario y producción
