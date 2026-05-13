@@ -7,6 +7,7 @@ import com.mundolimpio.application.product.repository.ProductRepository;
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
 import com.mundolimpio.application.productionbatch.dto.ProductionBatchRequest;
 import com.mundolimpio.application.productionbatch.dto.ProductionBatchResponse;
+import com.mundolimpio.application.inventory.service.InventoryService;
 import com.mundolimpio.application.productionbatch.exception.ProductionBatchNotFoundException;
 import com.mundolimpio.application.productionbatch.mapper.ProductionBatchMapper;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
@@ -41,6 +42,9 @@ class ProductionBatchServiceTest {
 
     @Mock
     private ProductionBatchMapper productionBatchMapper;
+
+    @Mock
+    private InventoryService inventoryService;
 
     @InjectMocks
     private ProductionBatchService service;
@@ -111,5 +115,77 @@ class ProductionBatchServiceTest {
         when(bulkProductRepository.findById(999L)).thenReturn(Optional.empty());
 
         assertThrows(ProductionBatchNotFoundException.class, () -> service.createProductionBatch(request));
+    }
+
+    // ==================== INVENTORY INTEGRATION TESTS ====================
+
+    /**
+     * Test: createProductionBatch debe llamar a InventoryService.incrementStock
+     * despues de guardar el lote.
+     *
+     * QUE VERIFICA:
+     * - inventoryService.incrementStock() es llamado con el productId y la
+     *   cantidad producida (initialQuantity = rawQuantityUsed * conversionRatio).
+     * - La llamada ocurre DENTRO del mismo @Transactional, despues del save.
+     *
+     * POR QUE este test:
+     * - Verifica la integracion entre ProductionBatch e Inventory.
+     * - Al crear un lote de produccion, el inventory module debe reflejar
+     *   el incremento de stock del producto terminado.
+     *
+     * DIFERENCIA con shouldCreateProductionBatchSuccessfully:
+     * - Ese test verifica la logica core de creacion de lotes.
+     * - Este test verifica ADEMAS que se integra correctamente con Inventory.
+     */
+    @Test
+    void createProductionBatch_ShouldCallInventoryServiceIncrementStock() {
+        // Given: mismos datos que el test de creacion exitosa
+        Long productId = 1L;
+        Long bulkProductId = 1L;
+        BigDecimal rawQuantityUsed = new BigDecimal("20.00");
+
+        Product product = new Product(productId, "LAVANDINA-001", "Lavandina 3L", new BigDecimal("10.00"), true);
+        BulkProduct bulkProduct = new BulkProduct(null, "Cloro Puro", new BigDecimal("20.00"),
+                new BigDecimal("5.50"), new BigDecimal("4.0"));
+
+        ProductionBatchRequest request = new ProductionBatchRequest(productId, bulkProductId, rawQuantityUsed);
+
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(bulkProductRepository.findById(bulkProductId)).thenReturn(Optional.of(bulkProduct));
+
+        // Mockear el mapper y el save del batch
+        ProductionBatch mockBatch = mock(ProductionBatch.class);
+        when(productionBatchMapper.toEntity(any(ProductionBatchRequest.class), any(Product.class),
+                any(BulkProduct.class), any(BigDecimal.class), any(BigDecimal.class), any(BigDecimal.class)))
+                .thenReturn(mockBatch);
+
+        ProductionBatch savedBatch = new ProductionBatch(product, bulkProduct,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), rawQuantityUsed);
+        when(productionBatchRepository.save(any(ProductionBatch.class))).thenReturn(savedBatch);
+
+        ProductionBatchResponse mockResponse = new ProductionBatchResponse(
+                1L, productId, "Lavandina 3L", bulkProductId, "Cloro Puro",
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), rawQuantityUsed, null
+        );
+        when(productionBatchMapper.toResponse(any(ProductionBatch.class))).thenReturn(mockResponse);
+
+        // When: creamos el lote
+        ProductionBatchResponse response = service.createProductionBatch(request);
+
+        // Then: debe llamar a inventoryService.incrementStock con productId e initialQuantity
+        // initialQuantity = 20.00 * 4.0 = 80.000 (BigDecimal mantiene la escala)
+        verify(inventoryService).incrementStock(productId, new BigDecimal("80.000"));
+
+        // Verificar que las demas llamadas siguen ocurriendo
+        verify(productRepository).findById(productId);
+        verify(bulkProductRepository).findById(bulkProductId);
+        verify(productionBatchRepository).save(any(ProductionBatch.class));
+        verify(bulkProductRepository).save(any(BulkProduct.class));
+
+        // Verificar respuesta
+        assertNotNull(response);
+        assertEquals("Lavandina 3L", response.productName());
     }
 }

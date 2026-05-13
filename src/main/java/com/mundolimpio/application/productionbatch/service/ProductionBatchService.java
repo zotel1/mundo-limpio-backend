@@ -2,6 +2,7 @@ package com.mundolimpio.application.productionbatch.service;
 
 import com.mundolimpio.application.bulkproduct.domain.BulkProduct;
 import com.mundolimpio.application.bulkproduct.repository.BulkProductRepository;
+import com.mundolimpio.application.inventory.service.InventoryService;
 import com.mundolimpio.application.product.domain.Product;
 import com.mundolimpio.application.product.repository.ProductRepository;
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
@@ -31,15 +32,18 @@ public class ProductionBatchService {
     private final ProductRepository productRepository;
     private final BulkProductRepository bulkProductRepository;
     private final ProductionBatchMapper mapper;
+    private final InventoryService inventoryService;
 
     public ProductionBatchService(ProductionBatchRepository repository,
                                  ProductRepository productRepository,
                                  BulkProductRepository bulkProductRepository,
-                                 ProductionBatchMapper mapper) {
+                                 ProductionBatchMapper mapper,
+                                 InventoryService inventoryService) {
         this.repository = repository;
         this.productRepository = productRepository;
         this.bulkProductRepository = bulkProductRepository;
         this.mapper = mapper;
+        this.inventoryService = inventoryService;
     }
 
     /**
@@ -76,6 +80,24 @@ public class ProductionBatchService {
         );
 
         ProductionBatch saved = repository.save(batch);
+
+        // ===== INVENTORY INTEGRATION =====
+        // QUE HACE: Al crear un lote de producción, incrementamos el inventario
+        // del producto terminado. La cantidad producida (initialQuantity) se suma
+        // al currentStock del Inventory de ese producto.
+        //
+        // POR QUE: El module de Inventory trackea el stock disponible de cada
+        // producto terminado de forma independiente al stock por lotes (FIFO).
+        // Cada lote nuevo aumenta el stock total disponible para la venta.
+        //
+        // DIFERENCIA con el stock de ProductionBatch:
+        // - production_batches.current_stock trackea cuánto queda de CADA lote
+        //   individualmente (para FIFO).
+        // - inventory.current_stock trackea el stock TOTAL del producto (1:1).
+        // - Ambos se actualizan en la misma transacción @Transactional para
+        //   mantener consistencia: si falla uno, se revierte el otro.
+        inventoryService.incrementStock(request.productId(), initialQuantity);
+
         return mapper.toResponse(saved);
     }
 

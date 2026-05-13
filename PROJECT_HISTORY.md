@@ -392,6 +392,90 @@ Se usó `@SpringBootTest` en vez de `@WebMvcTest` porque `@WebMvcTest` no carga 
 
 ---
 
+### Fase 8: Módulo de Inventario (Mayo 2026)
+
+#### Branch: `feature/inventory-module`
+
+**PR #3 (Integration):**
+- Wire InventoryService into ProductionBatchService (increment stock on batch creation)
+- Wire InventoryService into SaleService (decrement stock on sale)
+- Updated README.md and PROJECT_HISTORY.md
+
+**Lo que se implementó:**
+
+1. **Domain** (`Inventory.java`, `InventoryAdjustment.java`)
+   - `Inventory`: entidad 1:1 con Product (product_id FK + UNIQUE), current_stock, min_stock_threshold, @Version
+   - `InventoryAdjustment`: trail de auditoría con type, quantity, reason
+   - Relación separada de Product para no contaminar la entidad de catálogo con datos operacionales
+   - `@Version` en Inventory para optimistic locking en ajustes concurrentes
+
+2. **Repository** (`InventoryRepository.java`, `InventoryAdjustmentRepository.java`)
+   - `findByProductId(Long)`: Optional<Inventory> para consulta por producto
+   - `findLowStockInventories()`: @Query JPQL para productos donde currentStock < minStockThreshold
+
+3. **DTOs** (`InventoryResponse.java`, `AdjustmentRequest.java`)
+   - `InventoryResponse`: productId, productName, currentStock, minStockThreshold
+   - `AdjustmentRequest`: type, quantity (con signo: +aumenta, -disminuye), reason
+   - Jakarta Validation en AdjustmentRequest: @NotBlank type/reason, @NotNull quantity
+
+4. **Mapper** (`InventoryMapper.java`)
+   - `toResponse(Inventory)`: mapea entidad a DTO con product.getActive() como nombre producto
+   - Conversión manual (sin MapStruct) consistente con el resto del proyecto
+
+5. **Service** (`InventoryService.java`)
+   - `getInventory(Long productId)`: consulta stock de un producto (404 si no existe)
+   - `getLowStockInventories()`: lista productos con stock bajo el umbral mínimo
+   - `adjustStock(Long productId, AdjustmentRequest)`: ajuste manual con validación de stock no negativo, actualización de Inventory y creación de audit trail (InventoryAdjustment) en la misma transacción @Transactional
+   - `incrementStock(Long productId, BigDecimal quantity)`: público (para integración entre módulos), find-or-create pattern, sin auditoría (la auditoría es el evento de negocio mismo)
+   - `decrementStock(Long productId, BigDecimal quantity)`: público (para integración entre módulos), valida stock suficiente, sin auditoría
+
+6. **Controller** (`InventoryController.java`)
+   - GET `/api/v1/inventory/{productId}`: obtener stock por producto
+   - GET `/api/v1/inventory/low-stock`: productos con stock bajo
+   - POST `/api/v1/inventory/{productId}/adjust`: ajuste manual con auditoría
+   - Todos los endpoints requieren ROLE_ADMIN
+   - Documentación OpenAPI/Swagger completa
+
+7. **Exception Handling**
+   - `InventoryNotFoundException` → 404
+   - `InvalidAdjustmentException` → 400
+   - `GlobalExceptionHandler` captura ambas (ya existía para otros módulos)
+
+8. **Tests**
+   - `InventoryControllerTest` (7 tests, @SpringBootTest + MockMvc): 200, 401, 400, validación
+   - `InventoryServiceTest` (10 tests, Mockito): getInventory, lowStock, adjustStock, incrementStock, decrementStock, concurrencia
+   - `ProductionBatchServiceTest` actualizado: 4 tests (incluye integración con Inventory)
+   - `SaleServiceTest` actualizado: 5 tests (incluye integración con Inventory)
+
+9. **Integración entre módulos** (PR #3)
+   - `ProductionBatchService.createBatch()`: llama a `inventoryService.incrementStock(productId, initialQuantity)` después de guardar el lote
+   - `SaleService.createSale()`: llama a `inventoryService.decrementStock(productId, quantity)` después de guardar la venta
+   - Ambas llamadas ocurren DENTRO del mismo @Transactional para mantener consistencia transaccional
+   - `InventoryService.incrementStock()` y `decrementStock()` son públicos (package-private originalmente, cambiado a public para integración cross-package)
+
+**Decisión de diseño — Separación de Inventory vs ProductionBatch:**
+- `production_batches` trackea stock por LOTE (para FIFO). Cada lote tiene su propio current_stock.
+- `inventory` trackea stock TOTAL del producto (1:1 con Product). Un solo valor por producto.
+- Ambos se actualizan en la misma transacción para mantener consistencia.
+- Diferencia clave: FIFO descuenta de lotes individuales; Inventory refleja el saldo total.
+
+**Decisión de diseño — incrementStock/decrementStock públicos:**
+- Originalmente diseñados como package-private para restringir acceso.
+- Se cambiaron a public porque ProductionBatchService (productionbatch.service) y SaleService (sales.service) están en paquetes diferentes.
+- Alternativa considerada: mover la lógica a un servicio común. Se descartó porque aumentaba la complejidad sin beneficio claro.
+- Los métodos siguen SIN exponerse como endpoints REST (solo adjustStock es endpoint).
+
+**Decisión de diseño — Sin auditoría en increment/decrement:**
+- increment/decrement NO crean InventoryAdjustment. La auditoría de estas operaciones está en los eventos de negocio mismos (ProductionBatch para incrementos, Sale para decrementos).
+- adjustStock SÍ crea InventoryAdjustment porque es una acción manual del ADMIN que necesita justificación.
+
+**Decisión de diseño — @Version en Inventory:**
+- Protege contra race conditions en ajustes manuales concurrentes (dos ADMINs ajustando el mismo producto).
+- Consistente con el patrón usado en ProductionBatch y Sale.
+- En integraciones (increment/decrement), el @Version del Inventory puede lanzar OptimisticLockingFailureException si hay concurrencia, pero el @Transactional maneja el rollback.
+
+---
+
 ## Arquitectura
 
 ### Estructura de Capas
@@ -438,6 +522,20 @@ src/main/java/com/mundolimpio/application/
 │   ├── dto/SaleResponse.java           # id, totalAmount, items
 │   ├── dto/SaleItemResponse.java       # batchId, quantity, costs
 │   └── mapper/SaleMapper.java
+│
+├── inventory/                           # Módulo Inventario (stock total)
+│   ├── domain/Inventory.java           # Entidad 1:1 con Product, @Version
+│   ├── domain/InventoryAdjustment.java # Audit trail de ajustes manuales
+│   ├── repository/InventoryRepository.java
+│   ├── repository/InventoryAdjustmentRepository.java
+│   ├── service/InventoryService.java   # CRUD + ajustes + integración
+│   ├── controller/InventoryController.java  # GET /stock, POST /adjust
+│   ├── dto/InventoryResponse.java      # productId, currentStock, threshold
+│   ├── dto/AdjustmentRequest.java      # type, quantity con signo, reason
+│   ├── mapper/InventoryMapper.java
+│   └── exception/
+│       ├── InventoryNotFoundException.java
+│       └── InvalidAdjustmentException.java
 │
 ├── user/                                # Módulo Usuarios
 │   ├── domain/User.java
@@ -647,17 +745,18 @@ Todos los `@Service`, `@Controller`, `@Repository` son singletons por defecto.
 - [x] RBAC con roles ADMIN/OPERATOR
 - [x] **Módulo de Ventas (FIFO + @Version + 8 integration tests)**
 - [x] **CORS Configuration (preflight OPTIONS + CorsConfigurationSource)**
+- [x] **Módulo de Inventario (stock total + ajustes + integración con ventas/producción)**
 
 ### Módulos en Progreso 🚧
 - [x] **Auth Refresh Token** (Phases 1-4 Apply ✅ | Pending: Verify + Archive)
-- [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales)
+- [ ] Documentación de API con OpenAPI (parcial — necesita agregar Sales, Inventory)
 
 ### Tests
-- **Unit tests**: `ProductionBatchServiceTest`, `SaleMapperTest`, `SaleServiceTest`, `AuthServiceTest` (4 tests)
+- **Unit tests**: `ProductionBatchServiceTest` (4 tests), `SaleMapperTest`, `SaleServiceTest` (5 tests), `AuthServiceTest` (4 tests), `InventoryServiceTest` (10 tests)
 - **Integration tests**: `ProductControllerIT`, `BulkProductControllerIT`, `ProductionBatchControllerIT`, `SaleControllerIT` (8 tests), `AuthRefreshIT` (1 test)
-- **Controller tests**: `AuthControllerTest` (2 tests)
+- **Controller tests**: `AuthControllerTest` (2 tests), `InventoryControllerTest` (7 tests)
 - **CORS tests**: `CorsConfigTest` (1 test), `CorsSecurityTest` (3 tests)
-- **Total tests passing**: **20** (14 existentes + 7 nuevos de auth-refresh-token)
+- **Total tests passing**: **39** (37 existentes + 2 nuevos de integración inventory)
 - **Coverage**: Pendiente configurar JaCoCo reports
 
 ### Branches Actuales
@@ -669,7 +768,8 @@ main (producción)
     ├── feature/sales (completado)
     ├── feature/production-batches (completado)
     ├── feature/bulk-products (completado)
-    └── feature/product-module (completado)
+    ├── feature/product-module (completado)
+    └── feature/inventory-module (PR #3 Integration - completado)
 ```
 
 ---
@@ -728,11 +828,12 @@ main (producción)
 
 ### Módulos Adicionales (Visión Extendida)
 
-**Módulo: Inventory (Stock de Productos Envasados)**
-- [ ] Gestión del stock de productos ya envasados (3L, 2L, 1.5L, etc.)
-- [ ] Diferencia clave: `production-batches` maneja LOTES (cuánto se produjo), `inventory` maneja STOCK FINAL (cuánto hay disponible para venta)
-- [ ] Endpoints: GET `/api/v1/inventory`, POST `/api/v1/inventory/{id}/adjust`, GET `/api/v1/inventory/low-stock`
-- [ ] Patrones: Repository, DTO, Service + Observer pattern (alertas de stock bajo)
+**Módulo: Inventory (Stock de Productos Envasados)** ✅ COMPLETADO
+- [x] Gestión del stock de productos ya envasados (3L, 2L, 1.5L, etc.)
+- [x] Diferencia clave: `production-batches` maneja LOTES (cuánto se produjo), `inventory` maneja STOCK FINAL (cuánto hay disponible para venta)
+- [x] Endpoints: GET `/api/v1/inventory/{productId}`, GET `/api/v1/inventory/low-stock`, POST `/api/v1/inventory/{productId}/adjust`
+- [x] Patrones: Repository, DTO, Service + integración con Sales y ProductionBatch
+- [x] Integración transaccional: incrementStock al crear lote, decrementStock al crear venta
 
 **Módulo: Notifications (Alertas)**
 - [ ] Notificaciones de stock bajo, producción necesaria, etc.
@@ -782,7 +883,7 @@ main (producción)
 | SDD | No inicializado formalmente | Formalizar con openspec/ |
 
 ### Orden Recomendado de Implementación Futura
-1. **Inventory Module** ← Necesario para saber cuánto hay disponible
+1. ~~**Inventory Module**~~ ✅ **COMPLETADO**
 2. **Unit Tests** ← Coverage de services (ProductService, BulkProductService, ProductionBatchService)
 3. **Pagination** → Todos los endpoints de lista
 4. **Reporting Module** ← Reportes para el admin
@@ -864,6 +965,13 @@ Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 7. **Verify** → ❌ (pendiente)
 8. **Archive** → ❌ (pendiente)
 
+### Inventory Module (PR #3: Integration)
+1. **Apply** (Phase 3) → **✅ COMPLETADO**
+   - Task 3.1: Wire InventoryService into ProductionBatchService
+   - Task 3.2: Wire InventoryService into SaleService
+   - Task 3.3: Update README.md
+   - Task 3.4: Update PROJECT_HISTORY.md
+
 ### Commits del Sales Module
 | Commit | Descripción |
 |--------|-------------|
@@ -880,6 +988,6 @@ Este proyecto usa **SDD** para el flujo de desarrollo con la IA:
 
 ---
 
-**Última actualización:** 2026-05-09 (Sprint 1: Auth Refresh Token — Phase 1 Foundation)
+**Última actualización:** 2026-05-12 (Sprint 2: Inventory Module — PR #3 Integration)
 **Mantenido por:** zotel1
 **IA colaboradora:** Gentle AI (big-pickle)
