@@ -10,6 +10,7 @@ import com.mundolimpio.application.common.exception.ProductAlreadyExistsExceptio
 import com.mundolimpio.application.common.exception.ProductNotFoundException;
 import com.mundolimpio.application.inventory.exception.InventoryNotFoundException;
 import com.mundolimpio.application.inventory.exception.InvalidAdjustmentException;
+import com.mundolimpio.application.user.exception.UserNotFoundException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -112,6 +113,27 @@ public class GlobalExceptionHandler {
     ) {
         ErrorResponse errorResponse = new ErrorResponse(
                 "PRODUCT_NOT_FOUND",
+                ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    /*
+     * Maneja UserNotFoundException (404 - Not Found) - FALLBACK
+     * El handler primario es UserExceptionHandler en user.exception
+     * (con @Order(HIGHEST_PRECEDENCE)). Este es un respaldo por si
+     * el otro handler no captura la excepción (consistente con el
+     * patrón de InventoryNotFoundException y ProductNotFoundException).
+     */
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserNotFound(
+            UserNotFoundException ex,
+            WebRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "USER_NOT_FOUND",
                 ex.getMessage(),
                 LocalDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
