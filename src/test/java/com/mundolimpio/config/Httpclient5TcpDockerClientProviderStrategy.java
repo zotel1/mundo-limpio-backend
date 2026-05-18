@@ -71,7 +71,20 @@ public class Httpclient5TcpDockerClientProviderStrategy extends DockerClientProv
 
     @Override
     protected boolean isApplicable() {
-        // Siempre aplicable: zerodep excluido, httpclient5 es el único transporte viable.
+        // WHAT: Solo activar cuando DOCKER_HOST está explícitamente configurado como TCP.
+        // WHY: En CI (Linux), DOCKER_HOST podría no estar seteado o estar seteado
+        //      por surefire sin un endpoint TCP real. Si forzamos la conexión TCP
+        //      en ese caso, falla y bloquea la cadena de estrategias.
+        //      Tirando InvalidConfigurationException, Testcontainers saltea esta
+        //      estrategia y continúa con UnixSocketClientProviderStrategy (zerodep).
+        // DIFFERENCES: Antes siempre retornaba true, forzando conexión TCP
+        //              incluso cuando no había endpoint TCP disponible.
+        String dockerHost = System.getenv("DOCKER_HOST");
+        if (dockerHost == null || !dockerHost.startsWith("tcp://")) {
+            throw new InvalidConfigurationException(
+                "DOCKER_HOST not set to TCP — skipping"
+            );
+        }
         return true;
     }
 

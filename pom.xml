@@ -142,6 +142,21 @@
 			<version>3.4.1</version>
 			<scope>test</scope>
 		</dependency>
+		<!-- Transporte zerodep para docker-java — necesario en CI (Unix sockets)
+		     WHAT: Agregamos zerodep como dependencia standalone (fuera de testcontainers)
+		            para que UnixSocketClientProviderStrategy funcione en CI.
+		     WHY: En CI (GitHub Actions Linux), Docker se accede via Unix socket
+		          (/var/run/docker.sock). Httpclient5TcpDockerClientProviderStrategy
+		          usa TCP para desarrollo local Windows, pero en CI necesita zerodep
+		          como fallback para Unix sockets.
+		     DIFFERENCES: zerodep está excluido de testcontainers (para evitar que docker-java
+		                  auto-detecte npipe en Windows), pero lo agregamos standalone para CI. -->
+		<dependency>
+			<groupId>com.github.docker-java</groupId>
+			<artifactId>docker-java-transport-zerodep</artifactId>
+			<version>3.4.1</version>
+			<scope>test</scope>
+		</dependency>
 		<!-- Spring Security Test -->
 		<dependency>
 			<groupId>org.springframework.security</groupId>
