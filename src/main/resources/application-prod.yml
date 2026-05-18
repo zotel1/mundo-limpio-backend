@@ -1,26 +1,16 @@
 spring:
   datasource:
-<<<<<<< HEAD
-    url: jdbc:mysql://${MYSQLHOST:localhost}:${MYSQLPORT:3306}/${MYSQLDATABASE:mundolimpio}?useSSL=true&requireSSL=true&serverTimezone=UTC
-    username: ${MYSQLUSER:root}
-    password: ${MYSQLPASSWORD:}
-=======
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
->>>>>>> 6874b80 (chore: add production profile configuration for Railway)
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
     hibernate:
       ddl-auto: validate
-<<<<<<< HEAD
-    show-sql: false
-=======
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
->>>>>>> 6874b80 (chore: add production profile configuration for Railway)
 
   flyway:
     enabled: true
