@@ -11,4 +11,4 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
 
   flyway:
-    enabled: true
+    enabled: false
