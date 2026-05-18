@@ -10,10 +10,10 @@ import com.mundolimpio.application.user.dto.ResetPasswordRequest;
 import com.mundolimpio.application.user.dto.UserResponse;
 import com.mundolimpio.application.user.repository.UserRepository;
 import com.mundolimpio.application.security.service.JwtService;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
@@ -26,37 +26,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Test de integración para los endpoints ADMIN de gestión de usuarios.
  *
- * QUÉ HACE: Verifica el flujo completo de cada endpoint ADMIN de
- * UserManagementController: HTTP → Controller → Service → Repository → DB,
- * con autenticación JWT real y base H2 en memoria.
- *
- * POR QUÉ integration test y no unit test:
- * - Necesitamos verificar que toda la cadena funciona:
- *   HTTP → JwtAuthenticationFilter → @PreAuthorize → Controller → Service → DB.
- * - Un unit test con mocks no verificaría que @PreAuthorize, JWT real,
- *   BCryptPasswordEncoder, y JPA funcionan juntos.
- * - AuthRefreshIT establece este patrón para el módulo user.
- *
- * DIFERENCIA con UserManagementControllerTest:
- * - UserManagementControllerTest usa MockMvc y mockea el service.
- * - UserManagementIT usa TestRestTemplate (RANDOM_PORT) y repositorio real.
- * - UserManagementControllerTest usa @WithMockUser (simula auth).
- * - UserManagementIT genera tokens JWT reales y los envía en headers.
- * - UserManagementControllerTest verifica códigos HTTP y body JSON.
- * - UserManagementIT verifica que los cambios persisten en DB y que
- *   la autenticación real funciona (ej: OPERATOR → 403 con JWT real).
- *
- * CÓMO FUNCIONA:
- * 1. @SpringBootTest(webEnvironment = RANDOM_PORT): Servidor real en puerto aleatorio.
- * 2. TestRestTemplate: Cliente HTTP real.
- * 3. Creamos un usuario ADMIN en DB y generamos JWT real via JwtService.
- * 4. Enviamos requests con el token JWT en Authorization header.
- * 5. Perfil "test": H2 en memoria en vez de PostgreSQL.
- * 6. @BeforeEach deleteAll() asegura tests independientes.
+ * WHAT: Verifica HTTP → JwtAuthenticationFilter → @PreAuthorize → Controller → Service → DB
+ *       contra PostgreSQL real via Testcontainers.
+ * WHY: La autenticación JWT y el hashing BCrypt deben funcionar idéntico en test y producción.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-class UserManagementIT {
+class UserManagementIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;

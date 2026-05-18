@@ -7,10 +7,10 @@ import com.mundolimpio.application.user.dto.RefreshRequest;
 import com.mundolimpio.application.user.dto.RegisterRequest;
 import com.mundolimpio.application.user.repository.UserRepository;
 import com.mundolimpio.application.security.service.JwtService;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,43 +21,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Test de integración para el flujo completo de refresh token.
  *
- * POR QUÉ integration test y no unit test:
- * - Necesitamos verificar que toda la cadena funciona:
- *   HTTP → Controller → Service → Repository → DB → JWT.
- * - Un unit test con mocks no verificaría que JWT real se genera y valida.
- * - Un integration test con H2 verifica que Spring Security,
- *   validaciones, JPA, y JWT funcionan juntos.
- *
- * CÓMO FUNCIONA:
- * - @SpringBootTest(webEnvironment = RANDOM_PORT): Levanta una instancia real
- *   del servidor en un puerto aleatorio.
- * - TestRestTemplate: Cliente HTTP real que hace requests al servidor.
- * - Perfil "test": Usa H2 en memoria en vez de PostgreSQL.
- *
- * FLUJO DEL TEST:
- * 1. Registrar un usuario → 201 CREATED + LoginResponse con tokens
- * 2. Usar el refresh token del registro → POST /refresh
- * 3. Verificar que el endpoint funciona y devuelve tokens válidos
- *
- * NOTA sobre tokens "diferentes":
- * - JwtService.generateToken() usa System.currentTimeMillis() para el claim "iat"
- *   (Issued At), que en JWT tiene precisión de segundos (NumericDate).
- * - Si register() y refresh() ocurren dentro del mismo segundo, los tokens
- *   generados son IDÉNTICOS (mismo subject, iat, exp, signing key).
- * - No verificamos que sean diferentes porque eso depende del momento exacto
- *   de ejecución, no de la lógica de negocio. Verificamos que sean válidos.
- * - En producción, el refresh siempre genera tokens con timestamps distintos
- *   porque hay al menos 1 segundo entre register/login y refresh.
- *
- * POR QUÉ registramos en vez de crear el usuario directamente:
- * - Queremos probar el flujo COMPLETO incluyendo el hash de password.
- * - register() hashea la password con BCrypt, lo que verifica que
- *   el PasswordEncoder funciona en el perfil test.
- * - Si creamos el usuario directamente, nos saltaríamos ese paso.
+ * WHAT: Verifica registro → refresh token → nuevos tokens contra PostgreSQL real.
+ * WHY: JWT generation y validación deben funcionar idéntico en test y producción.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-class AuthRefreshIT {
+class AuthRefreshIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;

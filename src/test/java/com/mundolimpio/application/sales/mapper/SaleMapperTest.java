@@ -1,8 +1,8 @@
 package com.mundolimpio.application.sales.mapper;
 
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,13 +15,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - En un futuro se pueden agregar tests más detallados con datos de prueba para
  *   verificar que la conversión entity ↔ DTO funciona correctamente.
  * 
- * ESTADO ACTUAL:
- * Tests mínimos creados durante la fase GREEN de TDD (Phase 2).
- * Validan que Spring puede instanciar el mapper. Los tests de conversión
- * real con datos se pueden agregar cuando se necesite.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
-class SaleMapperTest {
+class SaleMapperTest extends AbstractIntegrationTest {
 
     /**
      * Inyectamos el mapper real. Si el contexto no carga, el test falla —

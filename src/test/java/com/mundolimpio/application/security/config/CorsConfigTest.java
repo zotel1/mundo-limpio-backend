@@ -1,8 +1,8 @@
 package com.mundolimpio.application.security.config;
 
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.cors.CorsConfiguration;
@@ -19,19 +19,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *   con los valores de application.yml inyectados via @Value.
  * - Un unit test con mocks no verificaría la integración con Spring Boot.
  *
- * CÓMO FUNCIONA:
- * - @SpringBootTest: Carga el contexto completo de Spring.
- * - @ActiveProfiles("test"): Usa perfil test con H2.
- * - @Autowired CorsConfigurationSource: Inyecta el bean configurado.
- *
- * CICLO TDD:
- * - RED: Bean no existe todavia → test falla porque CorsConfig.java no esta creado.
- * - GREEN: Crear CorsConfig.java → bean existe con orígenes configurados.
- * - REFACTOR: Agregar comentarios en español explicando cada decisión.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
 @ActiveProfiles("test")
-class CorsConfigTest {
+class CorsConfigTest extends AbstractIntegrationTest {
 
     @Autowired(required = false)
     private CorsConfigurationSource corsConfigurationSource;

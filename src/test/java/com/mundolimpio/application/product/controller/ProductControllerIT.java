@@ -3,10 +3,10 @@ package com.mundolimpio.application.product.controller;
 import com.mundolimpio.application.product.dto.ProductRequest;
 import com.mundolimpio.application.product.dto.ProductResponse;
 import com.mundolimpio.application.product.repository.ProductRepository;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,11 +17,14 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Test de Integración para ProductController con CRUD Completo
- * Usa H2 en memoria para tests (sin Docker/Testcontainers)
+ * Test de Integración para ProductController con CRUD Completo.
+ *
+ * WHAT: Verifica el CRUD completo de productos via HTTP contra PostgreSQL real (Testcontainers).
+ * WHY: El comportamiento debe ser idéntico al de producción porque usamos la misma DB.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class ProductControllerIT {
+class ProductControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
