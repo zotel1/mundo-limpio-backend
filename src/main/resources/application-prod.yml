@@ -1,3 +1,6 @@
+server:
+  port: ${PORT:8080}
+
 # Management / Actuator endpoints para Cloud Run health probes
 # WHAT: Expone /actuator/health y /actuator/info para liveness/readiness de Cloud Run
 # WHY: Sin estos endpoints, Cloud Run no puede verificar si el contenedor está vivo
