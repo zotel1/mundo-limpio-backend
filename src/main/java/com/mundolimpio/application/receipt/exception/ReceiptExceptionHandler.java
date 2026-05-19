@@ -1,5 +1,7 @@
 package com.mundolimpio.application.receipt.exception;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -24,6 +26,7 @@ import java.util.Map;
  * - Usa 422 UNPROCESSABLE_ENTITY (no estándar en Spring, pero correcto para errores de OCR).
  */
 @ControllerAdvice(basePackages = "com.mundolimpio.application.receipt")
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class ReceiptExceptionHandler {
 
     /**

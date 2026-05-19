@@ -1,12 +1,15 @@
 package com.mundolimpio.config;
 
+import net.sourceforge.tess4j.ITesseract;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import software.amazon.awssdk.services.s3.S3Client;
 
 /**
  * WHAT: Clase base para todos los tests de integración que usan PostgreSQL via Testcontainers.
@@ -21,6 +24,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * - @Container static: El contenedor se comparte entre TODOS los tests (solo se inicia una vez).
  * - @DynamicPropertySource: Sobrescribe spring.datasource.* con las propiedades del contenedor.
  * - postgres:16-alpine: Imagen liviana (~40MB menos que la estándar), ideal para CI.
+ * - @MockBean ITesseract y S3Client: Mocks para dependencias externas (OCR engine y storage)
+ *   que no están disponibles en el entorno de test. Todos los tests que extienden esta clase
+ *   heredan estos mocks, evitando errores de contexto por beans faltantes.
  *
  * DIFFERENCES con H2:
  * - H2: en memoria, sin Docker, rápido pero con diferencias de compatibilidad.
@@ -44,4 +50,21 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
     }
+
+    /**
+     * WHAT: Mock de ITesseract para todos los tests de integración.
+     * WHY: TesseractOcrService requiere ITesseract como dependencia, pero en tests
+     *      no tenemos el motor OCR instalado. @MockBean reemplaza la instancia real
+     *      por un mock de Mockito, permitiendo que el contexto de Spring cargue.
+     */
+    @MockBean
+    protected ITesseract tesseract;
+
+    /**
+     * WHAT: Mock de S3Client para todos los tests de integración.
+     * WHY: SupabaseStorageService requiere S3Client como dependencia, pero en tests
+     *      no tenemos credenciales ni conexión a Supabase Storage.
+     */
+    @MockBean
+    protected S3Client s3Client;
 }
