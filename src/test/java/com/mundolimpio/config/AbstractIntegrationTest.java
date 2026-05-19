@@ -1,6 +1,7 @@
 package com.mundolimpio.config;
 
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -25,9 +26,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * - H2: en memoria, sin Docker, rápido pero con diferencias de compatibilidad.
  * - Testcontainers PG: contenedor real, requiere Docker, más lento en arranque pero 100% compatible.
  * - Flyway corre las migraciones reales (antes estaba disabled en test).
+ * - @DirtiesContext: Fuerza nuevo ApplicationContext por subclase para evitar que
+ *   el datasource apunte a un contenedor PostgreSQL ya detenido de otra test class.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class AbstractIntegrationTest {
 
     @Container
