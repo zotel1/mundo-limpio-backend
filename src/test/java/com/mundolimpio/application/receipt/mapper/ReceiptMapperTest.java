@@ -61,7 +61,7 @@ class ReceiptMapperTest {
         assertSame(supplier, purchase1.getSupplier());
         assertSame(admin, purchase1.getAdmin());
         assertEquals(LocalDate.of(2026, 5, 15), purchase1.getPurchaseDate());
-        assertEquals(PurchaseStatus.PENDING, purchase1.getStatus());
+        assertEquals(PurchaseStatus.CONFIRMED, purchase1.getStatus());
         assertEquals(1, purchase1.getItems().size());
 
         PurchaseItem item1 = purchase1.getItems().get(0);

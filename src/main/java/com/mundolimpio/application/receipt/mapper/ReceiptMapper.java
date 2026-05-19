@@ -48,7 +48,7 @@ public class ReceiptMapper {
                 admin,
                 request.purchaseDate(),
                 BigDecimal.ZERO, // Se recalcula abajo
-                com.mundolimpio.application.receipt.domain.PurchaseStatus.PENDING
+                com.mundolimpio.application.receipt.domain.PurchaseStatus.CONFIRMED
         );
 
         // Convertir cada línea del request a PurchaseItem
