@@ -12,3 +12,17 @@ application:
       expiration: 86400000 # 24 horas en milisegundos
       refresh-expiration: 604800000 # 7 dias (para refresh tokens)
       #algorithm: HS256 # Algoritmo explicito
+
+# WHAT: Configuración de Supabase Storage para almacenamiento de imágenes de tickets.
+# WHY: Supabase Storage expone API S3-compatible. Usamos el SDK AWS S3 para subir imágenes.
+#      Las credenciales vienen de variables de entorno por seguridad.
+# DIFFERENCES: En producción las credenciales se setean via env vars de Cloud Run.
+#              En desarrollo local, los valores por defecto son placeholders.
+app:
+  supabase:
+    endpoint: ${SUPABASE_STORAGE_ENDPOINT:https://your-project.supabase.co/storage/v1/s3}
+    bucket: ${SUPABASE_STORAGE_BUCKET:receipts}
+    public-base-url: ${SUPABASE_PUBLIC_BASE_URL:https://your-project.supabase.co/storage/v1/object/public}
+    access-key: ${SUPABASE_ACCESS_KEY:}
+    secret-key: ${SUPABASE_SECRET_KEY:}
+    region: ${SUPABASE_REGION:us-east-1}
