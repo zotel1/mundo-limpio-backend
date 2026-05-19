@@ -1,0 +1,394 @@
+#!/usr/bin/env bash
+# WHAT: Migración de datos MySQL → PostgreSQL — exporta, transforma e importa
+# WHY: Facilita el cutover de producción con un script único, idempotente y verificable
+# DIFFERENCES: Transforma tipos MySQL (AUTO_INCREMENT, TINYINT, ENUM, ENGINE) a equivalentes PostgreSQL
+#
+# Uso:
+#   ./migrate-db.sh              # Migración completa (export → transform → import → verify)
+#   ./migrate-db.sh --dry-run    # Solo exporta y transforma, muestra SQL en stdout (sin tocar PG)
+#   ./migrate-db.sh --verify     # Solo verifica conteos entre MySQL y PostgreSQL (sin migrar)
+#
+# Variables de entorno (todas opcionales, con defaults):
+#   MySQL (origen):
+#     MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+#   PostgreSQL (destino):
+#     PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE
+
+set -euo pipefail
+
+# ─── Configuración desde variables de entorno con defaults ───
+# WHAT: Parámetros de conexión parametrizables para CI/CD y múltiples entornos
+# WHY: Variables de entorno permiten que el mismo script corra en local, staging y CI
+
+# MySQL (origen de datos)
+MYSQL_HOST="${MYSQL_HOST:-localhost}"
+MYSQL_PORT="${MYSQL_PORT:-3306}"
+MYSQL_USER="${MYSQL_USER:-root}"
+MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
+MYSQL_DATABASE="${MYSQL_DATABASE:-mundolimpio}"
+
+# PostgreSQL (destino de la migración)
+PG_HOST="${PG_HOST:-localhost}"
+PG_PORT="${PG_PORT:-5432}"
+PG_USER="${PG_USER:-postgres}"
+PG_PASSWORD="${PG_PASSWORD:-}"
+PG_DATABASE="${PG_DATABASE:-mundolimpio}"
+
+# ─── Funciones auxiliares ───
+
+# WHAT: Log con timestamp para trazabilidad en logs de CI/CD
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+# WHAT: Log de error y salida con código no-cero
+# WHY: set -e no captura todos los errores (pipes, subshells); esto fuerza salida explícita
+die() {
+    log "ERROR: $*" >&2
+    exit 1
+}
+
+# WHAT: Verifica que los binarios necesarios estén instalados
+# WHY: Fallar temprano evita errores misteriosos a mitad del proceso
+check_prerequisites() {
+    log "Verificando prerequisitos..."
+    for cmd in mysqldump psql sed; do
+        if ! command -v "$cmd" &>/dev/null; then
+            die "'$cmd' no está instalado o no está en PATH"
+        fi
+    done
+    log "Todos los prerequisitos encontrados."
+}
+
+# WHAT: Verifica conectividad a MySQL
+check_mysql_connection() {
+    log "Verificando conexión a MySQL ($MYSQL_HOST:$MYSQL_PORT/$MYSQL_DATABASE)..."
+    if ! mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" ${MYSQL_PASSWORD:+-p"$MYSQL_PASSWORD"} \
+         -e "SELECT 1;" "$MYSQL_DATABASE" &>/dev/null; then
+        die "No se puede conectar a MySQL. Verificá MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE"
+    fi
+    log "Conexión MySQL OK."
+}
+
+# WHAT: Verifica conectividad a PostgreSQL
+check_pg_connection() {
+    log "Verificando conexión a PostgreSQL ($PG_HOST:$PG_PORT/$PG_DATABASE)..."
+    if ! PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" \
+         -d "$PG_DATABASE" -c "SELECT 1;" &>/dev/null; then
+        die "No se puede conectar a PostgreSQL. Verificá PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE"
+    fi
+    log "Conexión PostgreSQL OK."
+}
+
+# ─── Fase 1: Export MySQL ───
+
+# WHAT: Exporta el esquema y datos de MySQL usando mysqldump --compatible=postgresql
+# WHY: --compatible=postgresql maneja la mayoría de traducciones automáticas (quote, escape, DATE)
+# DIFFERENCES: MySQL 8 → PostgreSQL 16 requiere transformaciones adicionales vía sed (ver transform_sql)
+export_mysql() {
+    local output_file="$1"
+    log "Exportando MySQL ($MYSQL_DATABASE) a $output_file..."
+
+    MYSQL_PWD="$MYSQL_PASSWORD" mysqldump \
+        --compatible=postgresql \
+        --no-tablespaces \
+        --skip-add-locks \
+        --skip-lock-tables \
+        --single-transaction \
+        --routines \
+        --triggers \
+        --host="$MYSQL_HOST" \
+        --port="$MYSQL_PORT" \
+        --user="$MYSQL_USER" \
+        "$MYSQL_DATABASE" > "$output_file"
+
+    if [ ! -s "$output_file" ]; then
+        die "El dump de MySQL está vacío. ¿La base de datos '$MYSQL_DATABASE' tiene tablas?"
+    fi
+
+    log "Export completado: $(wc -l < "$output_file") líneas, $(du -h "$output_file" | cut -f1)."
+}
+
+# ─── Fase 2: Transformar DDL MySQL → PostgreSQL ───
+
+# WHAT: Aplica transformaciones sed para convertir sintaxis MySQL en PostgreSQL compatible
+# WHY: mysqldump --compatible=postgresql no cubre AUTO_INCREMENT, TINYINT(1), ENUM, ENGINE ni utf8mb4
+# DIFFERENCES: Cada transformación tiene un comentario explicando qué cambia y por qué
+transform_sql() {
+    local input_file="$1"
+    local output_file="$2"
+    local lines_before lines_after
+
+    lines_before=$(wc -l < "$input_file")
+    log "Transformando DDL MySQL → PostgreSQL ($lines_before líneas)..."
+
+    cp "$input_file" "$output_file"
+
+    # ── Transformación 1: AUTO_INCREMENT → IDENTITY ──
+    # WHAT: Convierte BIGINT AUTO_INCREMENT a BIGINT GENERATED BY DEFAULT AS IDENTITY
+    # WHY: PostgreSQL no soporta AUTO_INCREMENT; IDENTITY es el reemplazo SQL estándar
+    # DIFFERENCES: GENERATED BY DEFAULT (no ALWAYS) permite INSERT con ID explícito para seeds
+    sed -i -E 's/BIGINT[[:space:]]+AUTO_INCREMENT/BIGINT GENERATED BY DEFAULT AS IDENTITY/gi' "$output_file"
+
+    # ── Transformación 2: TINYINT(1) → BOOLEAN ──
+    # WHAT: Convierte TINYINT(1) a BOOLEAN (tipo nativo de PostgreSQL)
+    # WHY: MySQL usa TINYINT(1) como alias de BOOLEAN; PG tiene tipo BOOLEAN real
+    sed -i -E 's/TINYINT[[:space:]]*\(1\)/BOOLEAN/gi' "$output_file"
+
+    # ── Transformación 3: ENUM → VARCHAR + CHECK ──
+    # WHAT: Convierte ENUM('val1','val2') a VARCHAR(255) con restricción CHECK
+    # WHY: PostgreSQL no tiene tipo ENUM nativo sin crear TYPE; VARCHAR+CHECK es equivalente y portable
+    # DIFFERENCES: Los valores ENUM se preservan en un CHECK IN, manteniendo la misma restricción semántica
+    # NOTA: Solo funciona en ENUMs de una sola línea. ENUMs multilínea deben ajustarse manualmente.
+    sed -i -E 's/([[:alnum:]_]+)[[:space:]]+ENUM\(([^)]+)\)/\1 VARCHAR(255) CHECK (\1 IN (\2))/gi' "$output_file"
+
+    # ── Transformación 4: Remover ENGINE=InnoDB ──
+    # WHAT: Elimina la cláusula ENGINE=InnoDB (específica de MySQL)
+    # WHY: PostgreSQL no tiene el concepto de storage engines; cada tabla usa el storage por defecto
+    sed -i -E 's/[[:space:]]*ENGINE[[:space:]]*=[[:space:]]*InnoDB//gi' "$output_file"
+
+    # ── Transformación 5: utf8mb4 → UTF8 ──
+    # WHAT: Convierte charset y collation utf8mb4 a UTF8
+    # WHY: MySQL utf8mb4 es equivalente a PostgreSQL UTF8 (ambos soportan 4-byte Unicode)
+    # DIFFERENCES: utf8mb4_unicode_ci (case-insensitive) no tiene equivalente exacto en PG; se usa UTF8 estándar
+    sed -i -E 's/utf8mb4/UTF8/gi' "$output_file"
+    sed -i -E 's/utf8mb3/UTF8/gi' "$output_file"
+
+    # ── Transformación 6: Remover comentarios versionados de MySQL ──
+    # WHAT: Elimina líneas /*!XXXXX ... */ (comentarios condicionales de MySQL)
+    # WHY: Son directivas específicas de versión de MySQL que PostgreSQL ignora o rechaza
+    sed -i -E '/^\/\*![0-9]+ .* \*\/;$/d' "$output_file"
+    sed -i -E 's/\/\*![0-9]+ //g' "$output_file"
+    sed -i -E 's/ \*\/;/;/g' "$output_file"
+
+    # ── Transformación 7: Remover SET y directivas de sesión MySQL ──
+    # WHAT: Elimina SET SQL_MODE, SET TIME_ZONE y variables de sesión específicas de MySQL
+    # WHY: No son compatibles con PostgreSQL; la configuración se maneja a nivel servidor o conexión
+    sed -i -E '/^SET (sql_mode|unique_checks|foreign_key_checks|time_zone|SQL_NOTES|NAMES|CHARACTER_SET)/Id' "$output_file"
+
+    # ── Transformación 8: Ajustar sintaxis de comentarios ──
+    # WHAT: Normaliza comentarios de línea (-- sin espacio → -- con espacio)
+    # WHY: PostgreSQL requiere espacio después de -- para reconocerlo como comentario
+    sed -i -E 's/^--([^[:space:]])/-- \1/' "$output_file"
+
+    # ── Transformación 9: Remover AUTO_INCREMENT de valores DEFAULT ──
+    # WHAT: Elimina AUTO_INCREMENT=valor al final de CREATE TABLE
+    # WHY: PostgreSQL no usa auto_increment offset; es sintaxis exclusiva de MySQL
+    sed -i -E 's/[[:space:]]*AUTO_INCREMENT[[:space:]]*=[[:space:]]*[0-9]+//gi' "$output_file"
+
+    # ── Transformación 10: Remover COLLATE específico de columna ──
+    # WHAT: Elimina COLLATE utf8mb4_unicode_ci etc. de definiciones de columna
+    # WHY: PostgreSQL maneja collation a nivel de base de datos, no por columna
+    sed -i -E 's/[[:space:]]+COLLATE[[:space:]]+[[:alnum:]_]+//gi' "$output_file"
+
+    # ── Transformación 11: Usar TRUE/FALSE en vez de b'1'/b'0' ──
+    # WHAT: Convierte literales booleanos estilo MySQL BIT a booleanos SQL estándar
+    # WHY: PostgreSQL interpreta TRUE/FALSE pero no la notación b'1' de MySQL
+    sed -i -E "s/\bb'1'\b/TRUE/gi" "$output_file"
+    sed -i -E "s/\bb'0'\b/FALSE/gi" "$output_file"
+
+    # ── Transformación 12: Reemplazar USE database por comentario ──
+    # WHAT: Convierte USE `database` en comentario informativo
+    # WHY: psql usa \c database en vez de USE; la conexión ya especifica la base de datos
+    sed -i -E 's/^USE `([^`]+)`;$/-- USE \1 (la base de datos ya está seleccionada vía PG_DATABASE)/gi' "$output_file"
+
+    lines_after=$(wc -l < "$output_file")
+    log "Transformación completada: $lines_before → $lines_after líneas (diferencia: $(( lines_before - lines_after )))."
+}
+
+# ─── Fase 3: Importar a PostgreSQL ───
+
+# WHAT: Importa el SQL transformado a PostgreSQL usando psql
+# WHY: psql es el cliente nativo de PostgreSQL; --set ON_ERROR_STOP=1 asegura atomicidad
+# DIFFERENCES: Usa --echo-errors para diagnóstico; --single-transaction para rollback en caso de falla
+import_to_pg() {
+    local sql_file="$1"
+    log "Importando a PostgreSQL ($PG_HOST:$PG_PORT/$PG_DATABASE)..."
+
+    PGPASSWORD="$PG_PASSWORD" psql \
+        --host="$PG_HOST" \
+        --port="$PG_PORT" \
+        --username="$PG_USER" \
+        --dbname="$PG_DATABASE" \
+        --set ON_ERROR_STOP=1 \
+        --single-transaction \
+        --echo-errors \
+        --file="$sql_file" 2>&1 | tail -20
+
+    local exit_code=${PIPESTATUS[0]}
+    if [ "$exit_code" -ne 0 ]; then
+        die "psql falló con código $exit_code. Revisá el log de errores arriba."
+    fi
+
+    log "Importación completada exitosamente."
+}
+
+# ─── Fase 4: Verificación de integridad (Task 3.2) ───
+
+# WHAT: Compara SELECT COUNT(*) por tabla entre MySQL y PostgreSQL
+# WHY: La integridad de datos es crítica; verifica que cada tabla tenga el mismo número de filas
+# DIFFERENCES: MySQL INFORMATION_SCHEMA muestra estimaciones; usamos COUNT(*) real para precisión
+verify_row_counts() {
+    log "=============================================="
+    log "VERIFICACIÓN DE INTEGRIDAD: Conteo por tabla"
+    log "=============================================="
+
+    # Obtener lista de tablas desde MySQL (excluyendo tablas de sistema Flyway)
+    local tables
+    tables=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" \
+        ${MYSQL_PASSWORD:+-p"$MYSQL_PASSWORD"} -N -B \
+        -e "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$MYSQL_DATABASE' AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME NOT LIKE 'flyway_%' ORDER BY TABLE_NAME;" 2>/dev/null)
+
+    if [ -z "$tables" ]; then
+        die "No se encontraron tablas en MySQL '$MYSQL_DATABASE'"
+    fi
+
+    local all_match=true
+    local mysql_count pg_count table
+
+    # Cabecera de la tabla de resultados
+    printf "\n%-35s %15s %15s %10s\n" "TABLA" "MYSQL COUNT(*)" "POSTGRES COUNT(*)" "MATCH"
+    printf "%-35s %15s %15s %10s\n" "$(printf '%.0s-' {1..35})" "$(printf '%.0s-' {1..15})" "$(printf '%.0s-' {1..15})" "$(printf '%.0s-' {1..10})"
+
+    for table in $tables; do
+        # Conteo MySQL
+        mysql_count=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" \
+            ${MYSQL_PASSWORD:+-p"$MYSQL_PASSWORD"} -N -B \
+            -e "SELECT COUNT(*) FROM \`$table\`;" "$MYSQL_DATABASE" 2>/dev/null || echo "ERROR")
+
+        # Conteo PostgreSQL
+        pg_count=$(PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" \
+            -d "$PG_DATABASE" -t -A \
+            -c "SELECT COUNT(*) FROM \"$table\";" 2>/dev/null || echo "ERROR")
+
+        local match="NO"
+        if [ "$mysql_count" = "$pg_count" ]; then
+            match="✅"
+        else
+            match="❌"
+            all_match=false
+        fi
+
+        printf "%-35s %15s %15s %10s\n" "$table" "$mysql_count" "$pg_count" "$match"
+    done
+
+    printf "\n"
+    if [ "$all_match" = true ]; then
+        log "✅ VERIFICACIÓN EXITOSA: Todos los conteos de filas coinciden entre MySQL y PostgreSQL."
+    else
+        log "❌ VERIFICACIÓN FALLIDA: Hay discrepancias en los conteos de filas. Revisá la tabla de arriba."
+        return 1
+    fi
+}
+
+# ─── Función principal ───
+
+# WHAT: Orquesta las 4 fases de migración según el modo (completa, dry-run, verify)
+# WHY: Un único entrypoint con modos permite testing y validación sin ejecutar la migración completa
+main() {
+    local mode="${1:-full}"
+
+    case "$mode" in
+        --dry-run|--dryrun|dry-run|dryrun)
+            log "=== MODO DRY-RUN: Export MySQL + Transformación (sin importar a PostgreSQL) ==="
+            check_prerequisites
+            check_mysql_connection
+
+            local dry_sql="migration_dryrun_$(date +%Y%m%d_%H%M%S).sql"
+            export_mysql "$dry_sql"
+            log "Aplicando transformaciones sed..."
+            transform_sql "$dry_sql" "${dry_sql}.transformed"
+
+            log "=============================================="
+            log "DRY-RUN COMPLETADO"
+            log "Archivo original (MySQL dump): $dry_sql"
+            log "Archivo transformado (PG compatible): ${dry_sql}.transformed"
+            log ""
+            log "Para revisar la salida:  less ${dry_sql}.transformed"
+            log "Para comparar con diff:  diff $dry_sql ${dry_sql}.transformed"
+            log "=============================================="
+
+            # Mostrar conteo de filas de MySQL como referencia
+            log ""
+            log "Conteo de filas en MySQL (referencia para validación post-migración):"
+            local tables
+            tables=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" \
+                ${MYSQL_PASSWORD:+-p"$MYSQL_PASSWORD"} -N -B \
+                -e "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$MYSQL_DATABASE' AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME NOT LIKE 'flyway_%' ORDER BY TABLE_NAME;" 2>/dev/null)
+
+            printf "%-35s %15s\n" "TABLA" "MYSQL COUNT(*)"
+            printf "%-35s %15s\n" "$(printf '%.0s-' {1..35})" "$(printf '%.0s-' {1..15})"
+            for table in $tables; do
+                local count
+                count=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" \
+                    ${MYSQL_PASSWORD:+-p"$MYSQL_PASSWORD"} -N -B \
+                    -e "SELECT COUNT(*) FROM \`$table\`;" "$MYSQL_DATABASE" 2>/dev/null || echo "ERROR")
+                printf "%-35s %15s\n" "$table" "$count"
+            done
+            ;;
+
+        --verify|--verify-only|verify|verify-only)
+            log "=== MODO VERIFY: Comparación de conteos MySQL ↔ PostgreSQL ==="
+            check_mysql_connection
+            check_pg_connection
+            verify_row_counts
+            ;;
+
+        --help|-h|help)
+            echo "Uso: $0 [--dry-run | --verify | --help]"
+            echo ""
+            echo "  (sin flags)     Migración completa: export → transform → import → verify"
+            echo "  --dry-run       Solo exporta MySQL y transforma, muestra SQL sin importar a PG"
+            echo "  --verify        Solo compara COUNT(*) entre MySQL y PostgreSQL"
+            echo "  --help          Muestra esta ayuda"
+            echo ""
+            echo "Variables de entorno:"
+            echo "  MySQL:  MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE"
+            echo "  PG:     PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE"
+            ;;
+
+        full|"")
+            log "=== MIGRACIÓN COMPLETA MySQL → PostgreSQL ==="
+            log "MySQL: $MYSQL_HOST:$MYSQL_PORT/$MYSQL_DATABASE"
+            log "PG:    $PG_HOST:$PG_PORT/$PG_DATABASE"
+            log ""
+
+            check_prerequisites
+            check_mysql_connection
+            check_pg_connection
+
+            local dump_file="migration_dump_$(date +%Y%m%d_%H%M%S).sql"
+            local transformed_file="${dump_file}.transformed"
+
+            # Fase 1: Export MySQL
+            export_mysql "$dump_file"
+
+            # Fase 2: Transformar
+            transform_sql "$dump_file" "$transformed_file"
+
+            # Fase 3: Importar a PostgreSQL
+            import_to_pg "$transformed_file"
+
+            # Fase 4: Verificar integridad
+            verify_row_counts
+
+            log ""
+            log "=============================================="
+            log "✅ MIGRACIÓN COMPLETADA EXITOSAMENTE"
+            log "Dump MySQL original:      $dump_file"
+            log "SQL transformado:         $transformed_file"
+            log ""
+            log "Archivos conservados para auditoría y rollback."
+            log "Eliminarlos manualmente cuando la migración esté confirmada:"
+            log "  rm $dump_file $transformed_file"
+            log "=============================================="
+            ;;
+
+        *)
+            die "Modo desconocido: '$mode'. Usá --dry-run, --verify, --help o sin argumentos."
+            ;;
+    esac
+}
+
+# ─── Entrypoint ───
+main "${1:-full}"
