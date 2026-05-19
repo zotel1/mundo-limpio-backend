@@ -1,8 +1,8 @@
 package com.mundolimpio.application.receipt.controller;
 
-import com.mundolimpio.application.receipt.dto.ProductLineDto;
-import com.mundolimpio.application.receipt.dto.ReceiptProcessResponse;
+import com.mundolimpio.application.receipt.dto.*;
 import com.mundolimpio.application.receipt.exception.OcrProcessingException;
+import com.mundolimpio.application.receipt.service.ReceiptConfirmationService;
 import com.mundolimpio.application.receipt.service.ReceiptProcessingService;
 import com.mundolimpio.application.security.service.JwtService;
 import com.mundolimpio.application.user.domain.Role;
@@ -20,17 +20,19 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * WHAT: Tests de integración para ReceiptController (POST /api/v1/receipts/process).
- * WHY: Verifica el flujo HTTP completo: autenticación JWT, validación de roles,
- *      manejo de errores de OCR, y respuesta exitosa con datos estructurados.
+ * WHAT: Tests de integración para ReceiptController.
+ * WHY: Verifica el flujo HTTP completo para ambos endpoints:
+ *      POST /api/v1/receipts/process (OCR) y POST /api/v1/receipts/confirm (persistencia).
  *
  * DIFFERENCES: Usamos @AutoConfigureMockMvc para que Spring configure MockMvc
  *              con todos los filtros de seguridad y @ControllerAdvice correctamente.
@@ -44,6 +46,9 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
 
     @MockBean
     private ReceiptProcessingService processingService;
+
+    @MockBean
+    private ReceiptConfirmationService confirmationService;
 
     @Autowired
     private UserRepository userRepository;
@@ -69,7 +74,7 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
         operatorToken = jwtService.generateToken(operator);
     }
 
-    // ===================== Tests de procesamiento exitoso =====================
+    // ===================== Tests de procesamiento (process) =====================
 
     /**
      * RED: Verifica que POST /api/v1/receipts/process retorna 200
@@ -107,7 +112,7 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
      * RED: Verifica que se retorna 403 cuando el usuario no es ADMIN.
      */
     @Test
-    void shouldReturn403WhenNotAdmin() throws Exception {
+    void shouldReturn403WhenNotAdminForProcess() throws Exception {
         MockMultipartFile image = new MockMultipartFile(
                 "image", "ticket.jpg", MediaType.IMAGE_JPEG_VALUE,
                 new byte[]{0x01, 0x02, 0x03});
@@ -142,7 +147,7 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
      * RED: Verifica que se retorna 401 cuando no hay token JWT.
      */
     @Test
-    void shouldReturn401WhenNoToken() throws Exception {
+    void shouldReturn401WhenNoTokenForProcess() throws Exception {
         MockMultipartFile image = new MockMultipartFile(
                 "image", "ticket.jpg", MediaType.IMAGE_JPEG_VALUE,
                 new byte[]{0x01, 0x02, 0x03});
@@ -150,5 +155,157 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(multipart("/api/v1/receipts/process")
                         .file(image))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ===================== Tests de confirmación (confirm) =====================
+
+    /**
+     * RED: Verifica que POST /api/v1/receipts/confirm retorna 201
+     * con PurchaseResponse cuando la confirmación es exitosa.
+     */
+    @Test
+    void shouldReturn201WithPurchaseResponse() throws Exception {
+        PurchaseResponse mockResponse = new PurchaseResponse(
+                1L,
+                "https://storage.example.com/receipts/img.jpg",
+                "Proveedor Test",
+                LocalDate.of(2026, 5, 15),
+                new BigDecimal("500.00"),
+                List.of(new PurchaseItemResponse(1L, "Cloro 5L", 2,
+                        new BigDecimal("150.00"), new BigDecimal("300.00"), 10L))
+        );
+
+        when(confirmationService.confirm(any(), any())).thenReturn(mockResponse);
+
+        String requestBody = """
+                {
+                    "imageUrl": "https://storage.example.com/receipts/img.jpg",
+                    "supplierName": "Proveedor Test",
+                    "purchaseDate": "2026-05-15",
+                    "lines": [
+                        {
+                            "description": "Cloro 5L",
+                            "quantity": 2,
+                            "unitPrice": 150.00,
+                            "bulkProductId": 10
+                        }
+                    ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/receipts/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.supplierName").value("Proveedor Test"))
+                .andExpect(jsonPath("$.total").value(500.00))
+                .andExpect(jsonPath("$.items[0].description").value("Cloro 5L"))
+                .andExpect(jsonPath("$.items[0].quantity").value(2));
+    }
+
+    /**
+     * RED: Verifica que se retorna 403 cuando operador intenta confirmar.
+     */
+    @Test
+    void shouldReturn403WhenNotAdminForConfirm() throws Exception {
+        String requestBody = """
+                {
+                    "imageUrl": "https://example.com/img.jpg",
+                    "supplierName": "Proveedor",
+                    "purchaseDate": "2026-05-15",
+                    "lines": [
+                        {
+                            "description": "Producto X",
+                            "quantity": 1,
+                            "unitPrice": 100.00,
+                            "bulkProductId": null
+                        }
+                    ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/receipts/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isForbidden());
+    }
+
+    /**
+     * RED: Verifica que se retorna 401 sin token JWT.
+     */
+    @Test
+    void shouldReturn401WhenNoTokenForConfirm() throws Exception {
+        String requestBody = """
+                {
+                    "imageUrl": "https://example.com/img.jpg",
+                    "supplierName": "Proveedor",
+                    "purchaseDate": "2026-05-15",
+                    "lines": [
+                        {
+                            "description": "Producto X",
+                            "quantity": 1,
+                            "unitPrice": 100.00,
+                            "bulkProductId": null
+                        }
+                    ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/receipts/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * RED: Verifica que se retorna 400 cuando la lista de items está vacía.
+     */
+    @Test
+    void shouldReturn400WhenEmptyProductLines() throws Exception {
+        String requestBody = """
+                {
+                    "imageUrl": "https://example.com/img.jpg",
+                    "supplierName": "Proveedor",
+                    "purchaseDate": "2026-05-15",
+                    "lines": []
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/receipts/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * RED: Verifica que se retorna 400 cuando quantity es 0.
+     */
+    @Test
+    void shouldReturn400WhenZeroQuantity() throws Exception {
+        String requestBody = """
+                {
+                    "imageUrl": "https://example.com/img.jpg",
+                    "supplierName": "Proveedor",
+                    "purchaseDate": "2026-05-15",
+                    "lines": [
+                        {
+                            "description": "Producto X",
+                            "quantity": 0,
+                            "unitPrice": 100.00,
+                            "bulkProductId": null
+                        }
+                    ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/receipts/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
     }
 }
