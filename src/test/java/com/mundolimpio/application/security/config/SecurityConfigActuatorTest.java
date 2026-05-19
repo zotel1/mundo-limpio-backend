@@ -107,4 +107,39 @@ class SecurityConfigActuatorTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));
     }
+
+    /**
+     * WHAT: Health liveness sub-path debe ser accesible SIN autenticacion.
+     *
+     * WHY: Render.com envia health probes a /actuator/health/liveness
+     *      para verificar que el contenedor esta vivo. Estos probes NO
+     *      incluyen Authorization header, por lo que Spring Security
+     *      debe permitirlos con /actuator/health/**.
+     *
+     * GIVEN: La aplicacion corre con SecurityConfig cargado
+     * WHEN:  GET /actuator/health/liveness sin header Authorization
+     * THEN:  HTTP 200 OK
+     */
+    @Test
+    void healthLivenessEndpoint_WithoutAuth_Returns200() throws Exception {
+        mockMvc.perform(get("/actuator/health/liveness"))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * WHAT: Health readiness sub-path debe ser accesible SIN autenticacion.
+     *
+     * WHY: Render.com envia health probes a /actuator/health/readiness
+     *      para verificar que el contenedor esta listo para recibir trafico.
+     *      Igual que liveness, estos probes no incluyen Authorization header.
+     *
+     * GIVEN: La aplicacion corre con SecurityConfig cargado
+     * WHEN:  GET /actuator/health/readiness sin header Authorization
+     * THEN:  HTTP 200 OK
+     */
+    @Test
+    void healthReadinessEndpoint_WithoutAuth_Returns200() throws Exception {
+        mockMvc.perform(get("/actuator/health/readiness"))
+                .andExpect(status().isOk());
+    }
 }
