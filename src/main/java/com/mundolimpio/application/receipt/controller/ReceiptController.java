@@ -60,12 +60,13 @@ public class ReceiptController {
      *       para que el admin los revise antes de confirmar.
      * 
      * FLUJO:
-     * 1. Valida que el archivo sea JPEG/PNG
+     * 1. Valida que el archivo sea JPEG/PNG (MIME type)
      * 2. Delega en ReceiptProcessingService (upload + OCR + parseo)
      * 3. Retorna ReceiptProcessResponse con líneas de producto detectadas
      *
      * @param image Archivo multipart con la foto del ticket (JPEG o PNG)
      * @return 200 OK con ReceiptProcessResponse (líneas de producto, proveedor, fecha, URL imagen)
+     * @throws IllegalArgumentException → 400 Bad Request si el formato no es soportado
      * @throws OcrProcessingException → 422 Unprocessable Entity (manejado por ReceiptExceptionHandler)
      */
     @PostMapping(value = "/process", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -82,6 +83,25 @@ public class ReceiptController {
     })
     public ResponseEntity<ReceiptProcessResponse> processReceipt(
             @RequestParam("image") MultipartFile image) {
+
+        // WHAT: Validación de archivo vacío en el controller.
+        // WHY: SPEC REC-002 — archivos vacíos deben rechazarse con 400.
+        if (image.isEmpty()) {
+            throw new IllegalArgumentException("File cannot be empty");
+        }
+
+        // WHAT: Validación temprana de MIME type en el controller.
+        // WHY: Falla rápido antes de delegar al servicio, evita subir archivos
+        //      inválidos a Supabase Storage y mejora la testabilidad HTTP.
+        //      SPEC: REC-002 — solo image/jpeg y image/png están permitidos.
+        String contentType = image.getContentType();
+        if (contentType == null ||
+                (!contentType.equals(MediaType.IMAGE_JPEG_VALUE) &&
+                 !contentType.equals(MediaType.IMAGE_PNG_VALUE))) {
+            throw new IllegalArgumentException(
+                    "Unsupported file type: " + contentType +
+                    ". Only JPEG and PNG are accepted.");
+        }
 
         ReceiptProcessResponse response = processingService.processReceipt(image);
         return ResponseEntity.ok(response);

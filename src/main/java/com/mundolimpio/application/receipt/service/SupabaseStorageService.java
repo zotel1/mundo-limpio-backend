@@ -50,14 +50,16 @@ public class SupabaseStorageService implements ReceiptStorageService {
      *
      * FLUJO:
      * 1. Validar que el archivo no esté vacío
-     * 2. Generar nombre único (timestamp + UUID + extensión original)
-     * 3. Construir PutObjectRequest con bucket, key y contentType
-     * 4. Llamar a s3Client.putObject() con los bytes del archivo
-     * 5. Construir y retornar la URL pública
+     * 2. Validar MIME type (solo JPEG/PNG)
+     * 3. Validar tamaño máximo (10MB)
+     * 4. Generar nombre único (timestamp + UUID + extensión original)
+     * 5. Construir PutObjectRequest con bucket, key y contentType
+     * 6. Llamar a s3Client.putObject() con los bytes del archivo
+     * 7. Construir y retornar la URL pública
      *
      * @param file Archivo multipart (JPEG/PNG) subido por el admin
      * @return URL pública de la imagen en Supabase Storage
-     * @throws IllegalArgumentException si el archivo es null o está vacío
+     * @throws IllegalArgumentException si el archivo es null, vacío, formato no soportado, o excede 10MB
      * @throws RuntimeException si falla la conexión con Supabase
      */
     @Override
@@ -70,6 +72,26 @@ public class SupabaseStorageService implements ReceiptStorageService {
         // Validación de archivo vacío
         if (file.isEmpty()) {
             throw new IllegalArgumentException("File cannot be empty");
+        }
+
+        // WHAT: Validación de MIME type — solo JPEG y PNG permitidos.
+        // WHY: La spec REC-002 requiere filtrar formatos no soportados.
+        //      Tesseract solo procesa imágenes; PDFs y otros formatos deben rechazarse.
+        String contentType = file.getContentType();
+        if (contentType == null ||
+                (!contentType.equals(org.springframework.http.MediaType.IMAGE_JPEG_VALUE) &&
+                 !contentType.equals(org.springframework.http.MediaType.IMAGE_PNG_VALUE))) {
+            throw new IllegalArgumentException(
+                    "Unsupported file type: " + contentType + ". Only JPEG and PNG are accepted.");
+        }
+
+        // WHAT: Validación de tamaño máximo — 10MB.
+        // WHY: La spec REC-002 define 10MB como límite máximo para imágenes de tickets.
+        //      Imágenes más grandes probablemente no son fotos de tickets (ej: RAW de cámara).
+        final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB en bytes
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException(
+                    "File size exceeds maximum of 10MB. Actual size: " + file.getSize() + " bytes");
         }
 
         try {

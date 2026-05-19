@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -145,5 +146,63 @@ class SupabaseStorageServiceTest {
         String url2 = storageService.upload(validImage);
 
         assertThat(url1).isNotEqualTo(url2);
+    }
+
+    // ===================== Fix 1 — RED: Validación de MIME type y tamaño =====================
+
+    /**
+     * RED: Verifica que upload() acepta imágenes PNG.
+     * SPEC: REC-002 — solo image/jpeg y image/png están permitidos.
+     */
+    @Test
+    void shouldAcceptPngImage() {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(null);
+
+        MultipartFile pngImage = new MockMultipartFile(
+                "image", "ticket.png", MediaType.IMAGE_PNG_VALUE,
+                new byte[]{0x00, 0x01, 0x02});
+
+        String url = storageService.upload(pngImage);
+
+        assertThat(url).isNotNull();
+        assertThat(url).contains("ticket");
+    }
+
+    /**
+     * RED: Verifica que upload() rechaza archivos PDF.
+     * SPEC: REC-002 "Unsupported format" — 400 Bad Request para formatos no imagen.
+     */
+    @Test
+    void shouldThrowExceptionForUnsupportedFormat() {
+        MultipartFile pdfFile = new MockMultipartFile(
+                "image", "document.pdf", MediaType.APPLICATION_PDF_VALUE,
+                new byte[]{0x00, 0x01, 0x02});
+
+        assertThatThrownBy(() -> storageService.upload(pdfFile))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported file type");
+    }
+
+    /**
+     * RED: Verifica que upload() rechaza archivos que exceden 10MB.
+     * SPEC: REC-002 — max 10MB.
+     *
+     * WHI: Usamos mock(MultipartFile) en vez de MockMultipartFile
+     *      para simular un archivo grande sin consumir memoria real.
+     */
+    @Test
+    void shouldThrowExceptionWhenFileExceedsMaxSize() {
+        MultipartFile largeFile = mock(MultipartFile.class);
+        when(largeFile.isEmpty()).thenReturn(false);
+        when(largeFile.getContentType()).thenReturn(MediaType.IMAGE_JPEG_VALUE);
+        when(largeFile.getSize()).thenReturn(11 * 1024 * 1024L); // 11MB
+        // NOTA: No stubeamos getBytes() ni getOriginalFilename() porque
+        //       el código no llega a llamarlos (la validación de tamaño
+        //       ocurre antes de la subida a S3).
+
+        assertThatThrownBy(() -> storageService.upload(largeFile))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("10MB");
     }
 }

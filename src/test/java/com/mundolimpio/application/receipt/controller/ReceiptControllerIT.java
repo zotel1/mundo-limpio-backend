@@ -281,6 +281,45 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ===================== Fix 3 — RED: Validación MIME en controller =====================
+
+    /**
+     * RED: Verifica que el controller rechaza archivos PDF (formato no soportado).
+     * SPEC: REC-002 "Unsupported format" — 400 Bad Request para formatos no imagen.
+     * 
+     * WHY: La validación de MIME type ocurre en el controller ANTES de llamar
+     *      al processingService. El mock nunca se invoca para formatos inválidos.
+     */
+    @Test
+    void shouldReturn400WhenUnsupportedFormat() throws Exception {
+        MockMultipartFile pdfFile = new MockMultipartFile(
+                "image", "document.pdf", MediaType.APPLICATION_PDF_VALUE,
+                new byte[]{0x01, 0x02, 0x03});
+
+        mockMvc.perform(multipart("/api/v1/receipts/process")
+                        .file(pdfFile)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("Unsupported file type")));
+    }
+
+    /**
+     * RED: Verifica que el controller rechaza archivos vacíos a nivel HTTP.
+     * SPEC: REC-002 "Empty file" — 400 Bad Request para multipart vacío.
+     */
+    @Test
+    void shouldReturn400WhenEmptyFileAtHttpLevel() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "image", "empty.jpg", MediaType.IMAGE_JPEG_VALUE, new byte[0]);
+
+        mockMvc.perform(multipart("/api/v1/receipts/process")
+                        .file(emptyFile)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+    }
+
     /**
      * RED: Verifica que se retorna 400 cuando quantity es 0.
      */
