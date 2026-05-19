@@ -1,9 +1,32 @@
+# Management / Actuator endpoints para Cloud Run health probes
+# WHAT: Expone /actuator/health y /actuator/info para liveness/readiness de Cloud Run
+# WHY: Sin estos endpoints, Cloud Run no puede verificar si el contenedor está vivo
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
 spring:
   datasource:
     url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:mundolimpio}
     username: ${PGUSER:postgres}
     password: ${PGPASSWORD:}
     driver-class-name: org.postgresql.Driver
+    # Configuración de HikariCP para Supabase (PostgreSQL 16)
+    # WHAT: Pool size=5 ajustado al free tier de Supabase (max 15 conexiones totales)
+    #        + SSL via data-source-properties (sslmode=require) para conexión segura
+    # WHY: Supabase free tier limita a 15 conexiones directas. Con max-instances=3,
+    #      3×5=15, asegurando que nunca excedemos el límite.
+    #       SSL es obligatorio en Supabase — sin SSL la conexión es rechazada.
+    # DIFFERENCES: Docker Compose local sobrescribe spring.datasource.url via
+    #              SPRING_DATASOURCE_URL, por lo que estas propiedades HikariCP
+    #              (ssl, sslmode) no afectan el desarrollo local sin SSL.
+    hikari:
+      maximum-pool-size: 5
+      data-source-properties:
+        ssl: "true"
+        sslmode: require
 
   jpa:
     hibernate:
