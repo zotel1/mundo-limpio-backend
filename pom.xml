@@ -68,6 +68,15 @@
 			<version>0.12.5</version>
 			<scope>runtime</scope>
 		</dependency>
+		<!-- Actuator — health checks para Cloud Run -->
+		<!-- WHAT: spring-boot-starter-actuator provee endpoints /actuator/health, /actuator/info -->
+		<!-- WHY: Cloud Run necesita health probes HTTP para liveness y readiness.
+		     Sin actuator, el load balancer de Cloud Run no puede verificar si el contenedor
+		     está vivo ni si puede recibir tráfico. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
 		<!-- Database - PostgreSQL for production (migrated from MySQL) -->
 		<dependency>
 			<groupId>org.postgresql</groupId>

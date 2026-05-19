@@ -76,6 +76,12 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // Health check de Cloud Run — debe ser publico
+                        // WHAT: Permitir /actuator/health sin autenticacion
+                        // WHY: Cloud Run envia health probes HTTP sin Authorization header.
+                        //      Si bloqueamos este endpoint, el contenedor nunca pasa
+                        //      el health check y Cloud Run lo reinicia en loop infinito.
+                        .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
