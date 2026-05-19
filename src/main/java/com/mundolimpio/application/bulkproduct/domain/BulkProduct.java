@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 * - Jabon: 1L -> 1L (ratio = 1, no se diluye)*/
 
 @Entity
-@Table(name = "bulkproducts")
+@Table(name = "bulk_products")
 public class BulkProduct {
 
     @Id

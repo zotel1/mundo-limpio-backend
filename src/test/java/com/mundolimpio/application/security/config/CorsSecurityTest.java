@@ -1,9 +1,9 @@
 package com.mundolimpio.application.security.config;
 
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,19 +27,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Con .cors(Customizer.withDefaults()), Spring Security usa el bean
  *   CorsConfigurationSource para manejar el preflight y retorna 200.
  *
- * CICLO TDD:
- * - RED: SecurityConfig NO tiene .cors() → OPTIONS a endpoint protegido retorna 401.
- * - GREEN: Agregar .cors(Customizer.withDefaults()) antes de .csrf() → OPTIONS retorna 200.
- * - REFACTOR: Agregar comentarios en espanol explicando la decision.
- *
- * CAPA: Integration Test
- * POR QUE: Necesitamos verificar el comportamiento HTTP real con
- * Spring Security filter chain completo, no solo el bean aislado.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class CorsSecurityTest {
+class CorsSecurityTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

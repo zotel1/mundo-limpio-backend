@@ -8,9 +8,9 @@ import com.mundolimpio.application.product.repository.ProductRepository;
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
 import com.mundolimpio.application.sales.dto.SaleRequest;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -28,18 +28,11 @@ import static org.mockito.Mockito.verify;
  * - Para tests unitarios puros podríamos usar Mockito, pero @SpringBootTest
  *   nos da más confianza de que todo el wiring funciona correctamente.
  * 
- * ESTADO ACTUAL:
- * Estos tests son placeholders mínimos creados durante la fase GREEN de TDD.
- * Los tests reales de FIFO (con datos en base de datos H2) se implementan
- * en la Phase 4 como tests de integración (SaleControllerIT).
- * 
- * CÓMO EVOLUCIONARÁN:
- * - Phase 4: Tests de integración con H2, datos de prueba, verificación FIFO real.
- * - Phase 5: Tests de concurrencia para verificar OptimisticLocking.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
 @ActiveProfiles("test")
-class SaleServiceTest {
+class SaleServiceTest extends AbstractIntegrationTest {
 
     /**
      * Inyectamos el servicio real con Spring. Si el contexto no carga,

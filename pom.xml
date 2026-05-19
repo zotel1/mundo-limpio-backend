@@ -16,6 +16,7 @@
 	<properties>
 		<java.version>21</java.version>
 		<lombok.version>1.18.36</lombok.version>
+		<testcontainers.version>1.20.6</testcontainers.version>
 	</properties>
 	<dependencies>
 		<!-- Spring Boot Starters -->
@@ -67,10 +68,10 @@
 			<version>0.12.5</version>
 			<scope>runtime</scope>
 		</dependency>
-		<!-- Database - MySQL for production -->
+		<!-- Database - PostgreSQL for production (migrated from MySQL) -->
 		<dependency>
-			<groupId>com.mysql</groupId>
-			<artifactId>mysql-connector-j</artifactId>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
 		</dependency>
 		<!-- Flyway - Database migrations -->
@@ -80,7 +81,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.flywaydb</groupId>
-			<artifactId>flyway-mysql</artifactId>
+			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 		<!-- Lombok -->
 		<dependency>
@@ -95,10 +96,65 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<!-- H2 Database for tests (in-memory) -->
+		<!-- Testcontainers PostgreSQL para tests de integración
+		     WHAT: Reemplaza H2 con PostgreSQL real via Docker para tests que reflejen producción
+		     WHY: H2 no es 100% compatible con PostgreSQL (diferencias en DDL, tipos, funciones)
+		     DIFFERENCES: Antes usábamos H2 en memoria; ahora usamos PostgreSQL 16 en contenedor -->
 		<dependency>
-			<groupId>com.h2database</groupId>
-			<artifactId>h2</artifactId>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>${testcontainers.version}</version>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>com.github.docker-java</groupId>
+					<artifactId>docker-java-transport-zerodep</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>${testcontainers.version}</version>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>com.github.docker-java</groupId>
+					<artifactId>docker-java-transport-zerodep</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<!-- Transporte HTTP para docker-java — necesario en Windows con Docker Desktop
+		     WHAT: Reemplaza docker-java-transport-zerodep (npipe nativo) por transporte HTTP/TCP
+		     WHY: zerodep hardcodea npipe en Windows e ignora DOCKER_HOST, rompiendo conexión
+		          con Docker Desktop. httpclient5 respeta DOCKER_HOST y permite conexión TCP.
+		     DIFFERENCES: Antes zerodep (npipe nativo, ignora configuración);
+		                 ahora httpclient5 (TCP vía DOCKER_HOST, respeta configuración). -->
+		<dependency>
+			<groupId>com.github.docker-java</groupId>
+			<artifactId>docker-java-core</artifactId>
+			<version>3.4.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.github.docker-java</groupId>
+			<artifactId>docker-java-transport-httpclient5</artifactId>
+			<version>3.4.1</version>
+			<scope>test</scope>
+		</dependency>
+		<!-- Transporte zerodep para docker-java — necesario en CI (Unix sockets)
+		     WHAT: Agregamos zerodep como dependencia standalone (fuera de testcontainers)
+		            para que UnixSocketClientProviderStrategy funcione en CI.
+		     WHY: En CI (GitHub Actions Linux), Docker se accede via Unix socket
+		          (/var/run/docker.sock). Httpclient5TcpDockerClientProviderStrategy
+		          usa TCP para desarrollo local Windows, pero en CI necesita zerodep
+		          como fallback para Unix sockets.
+		     DIFFERENCES: zerodep está excluido de testcontainers (para evitar que docker-java
+		                  auto-detecte npipe en Windows), pero lo agregamos standalone para CI. -->
+		<dependency>
+			<groupId>com.github.docker-java</groupId>
+			<artifactId>docker-java-transport-zerodep</artifactId>
+			<version>3.4.1</version>
 			<scope>test</scope>
 		</dependency>
 		<!-- Spring Security Test -->
@@ -121,6 +177,30 @@
 	</dependencies>
 	<build>
 		<plugins>
+			<!-- Surefire config: docker-java-transport-httpclient5 necesita DOCKER_HOST
+			     y Testcontainers necesita saber qué estrategia usar.
+			     WHAT: Configura DOCKER_HOST, docker.client.strategy, y deshabilita Ryuk
+			           para evitar el bug de port-mapping con Docker Desktop TCP en Windows.
+			     WHY: httpclient5 respeta DOCKER_HOST; la estrategia personalizada
+			          Httpclient5TcpDockerClientProviderStrategy crea el DockerClient
+			          con httpclient5 porque zerodep fue excluido.
+			          Ryuk se deshabilita porque el port-mapping con TCP en Docker Desktop
+			          no expone correctamente los puertos al host (bug conocido).
+			     DIFFERENCES: Antes zerodep (npipe, ignoraba todo);
+			                 ahora httpclient5 (TCP, estrategia explícita, sin Ryuk). -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<environmentVariables>
+						<DOCKER_HOST>tcp://localhost:2375</DOCKER_HOST>
+						<TESTCONTAINERS_RYUK_DISABLED>true</TESTCONTAINERS_RYUK_DISABLED>
+					</environmentVariables>
+					<systemPropertyVariables>
+						<docker.client.strategy>com.mundolimpio.config.Httpclient5TcpDockerClientProviderStrategy</docker.client.strategy>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>

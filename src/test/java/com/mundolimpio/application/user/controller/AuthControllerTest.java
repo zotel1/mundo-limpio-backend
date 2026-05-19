@@ -4,10 +4,10 @@ import com.mundolimpio.application.user.dto.LoginResponse;
 import com.mundolimpio.application.user.dto.RefreshRequest;
 import com.mundolimpio.application.user.exception.InvalidRefreshTokenException;
 import com.mundolimpio.application.user.service.AuthService;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -32,20 +32,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - @AutoConfigureMockMvc permite usar MockMvc para simular requests HTTP.
  * - @MockBean AuthService reemplaza el AuthService real para controlar el comportamiento.
  *
- * CÓMO FUNCIONA:
- * - @SpringBootTest: Carga toda la aplicación Spring Boot.
- * - @AutoConfigureMockMvc: Configura MockMvc para tests web.
- * - @ActiveProfiles("test"): Usa H2 en memoria.
- * - @MockBean AuthService: Reemplaza AuthService por un mock.
- *
- * QUÉ TESTEAMOS:
- * - POST /api/v1/auth/refresh con body válido → 200 OK + LoginResponse
- * - POST /api/v1/auth/refresh con InvalidRefreshTokenException → 401 UNAUTHORIZED
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class AuthControllerTest {
+class AuthControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

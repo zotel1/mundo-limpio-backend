@@ -7,11 +7,11 @@ import com.mundolimpio.application.user.dto.ResetPasswordRequest;
 import com.mundolimpio.application.user.dto.UserResponse;
 import com.mundolimpio.application.user.exception.UserNotFoundException;
 import com.mundolimpio.application.user.service.UserManagementService;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -48,11 +48,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   de autodemoción (SELF_DEMOTION) requiere un principal de tipo User (dominio)
  *   para que getCurrentUserId() extraiga el ID correctamente. Por eso ese test
  *   setea SecurityContextHolder manualmente con un User real.
+ *
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserManagementControllerTest {
+class UserManagementControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
