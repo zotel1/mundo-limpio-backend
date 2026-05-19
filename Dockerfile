@@ -65,4 +65,6 @@ ENTRYPOINT ["java", \
   "-XX:+UseContainerSupport", \
   "-XX:MaxRAMPercentage=75.0", \
   "-Djava.security.egd=file:/dev/./urandom", \
+  "-Dserver.port=${PORT:8080}", \
+  "-Dspring.profiles.active=prod", \
   "-jar", "app.jar"]

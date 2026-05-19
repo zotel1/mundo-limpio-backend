@@ -32,6 +32,16 @@ spring:
     #              Ahora: enabled: true (Flyway crea tablas idénticas a producción).
      enabled: true
 
+# WHAT: Habilitar health probes (liveness/readiness) para validar SecurityConfig wildcard.
+# WHY: Sin probes=always, /actuator/health/liveness y /actuator/health/readiness retornan 404.
+#      Necesitamos que estén expuestos para verificar que el wildcard /actuator/health/**
+#      permite acceso sin autenticación a todos los sub-paths.
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 # WHAT: Configuración de Supabase Storage para tests.
 # WHY: SupabaseStorageService necesita estas propiedades para inyectar @Value,
 #      aunque en tests de integración del controller se mockee S3Client.

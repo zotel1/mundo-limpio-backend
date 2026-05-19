@@ -81,7 +81,7 @@ public class SecurityConfig {
                         // WHY: Cloud Run envia health probes HTTP sin Authorization header.
                         //      Si bloqueamos este endpoint, el contenedor nunca pasa
                         //      el health check y Cloud Run lo reinicia en loop infinito.
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/health/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
