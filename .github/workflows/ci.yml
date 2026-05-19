@@ -11,11 +11,30 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      # Docker ya está disponible en el runner, pero Testcontainers
-      # necesita que el demonio de Docker esté activo.
+      # Docker para Testcontainers (necesita acceso al daemon)
       docker:
         image: docker:dind
         options: --privileged
+
+      # WHAT: PostgreSQL 16 como service container para CI
+      # WHY: Testcontainers usa Docker externo con Ryuk en CI para
+      #       mejor consistencia y limpieza automática de contenedores.
+      #       El service container de GH Actions asegura que PG esté disponible
+      #       como fallback y para health checks.
+      # DIFFERENCES: Antes no había service container PG (solo H2 en tests).
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +47,13 @@ jobs:
           cache: 'maven'
 
       - name: Build and Test
-        # Esto ejecutará Flyway, Unit tests e Integration tests (Testcontainers)
+        # WHAT: Ejecuta Flyway, unit tests e integration tests (Testcontainers)
+        # WHY: Testcontainers levanta PostgreSQL automáticamente; las variables
+        #       de entorno son fallback para conexiones directas en CI.
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/testdb
+          SPRING_DATASOURCE_USERNAME: test
+          SPRING_DATASOURCE_PASSWORD: test
         run: mvn clean verify
 
       - name: Publish Test Report

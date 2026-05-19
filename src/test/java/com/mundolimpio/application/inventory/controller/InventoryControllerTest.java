@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mundolimpio.application.inventory.dto.AdjustmentRequest;
 import com.mundolimpio.application.inventory.dto.InventoryResponse;
 import com.mundolimpio.application.inventory.service.InventoryService;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -44,11 +44,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - AuthControllerTest mockea AuthService.
  * - InventoryControllerTest mockea InventoryService.
  * - Ambos usan el mismo patrón de test.
+ *
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class InventoryControllerTest {
+class InventoryControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

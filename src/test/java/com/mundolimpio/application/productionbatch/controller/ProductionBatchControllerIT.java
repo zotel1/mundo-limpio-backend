@@ -12,10 +12,10 @@ import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
 import com.mundolimpio.application.user.repository.UserRepository;
 import com.mundolimpio.application.security.service.JwtService;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -32,12 +32,13 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Test de Integración (E2E) para ProductionBatchController.
  *
- * Usa H2 en memoria (perfil "test").
- * Crea usuarios ADMIN para autenticación.
+ * WHAT: Verifica creación y consulta de lotes de producción via HTTP contra PostgreSQL real.
+ * WHY: Usar la misma DB que producción garantiza compatibilidad total.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-class ProductionBatchControllerIT {
+class ProductionBatchControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;

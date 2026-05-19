@@ -13,10 +13,10 @@ import com.mundolimpio.application.security.service.JwtService;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
 import com.mundolimpio.application.user.repository.UserRepository;
+import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -34,25 +34,14 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests de integración para SaleController.
  *
- * POR QUÉ integration test y no unit test:
- * - Necesitamos verificar que toda la cadena funciona: HTTP → Controller → Service → Repository → DB.
- * - Un unit test con mocks solo verificaría la lógica aislada.
- * - Un integration test con H2 verifica que Spring Security, validaciones y JPA funcionan juntos.
- *
- * CÓMO FUNCIONA:
- * - @SpringBootTest(webEnvironment = RANDOM_PORT): Levanta una instancia real del servidor en un puerto aleatorio.
- * - TestRestTemplate: Cliente HTTP real que hace requests al servidor, como un browser.
- * - Perfil "test": Usa H2 en memoria en vez de PostgreSQL.
- *
- * TESTS que escribimos (RED → GREEN → REFACTOR):
- * - 401: Sin token → Spring Security rechaza antes de llegar al controller
- * - 403: Con token pero role OPERATOR → @PreAuthorize("hasRole('ADMIN')") rechaza
- * - 201: Admin crea venta con stock disponible → FIFO funciona
- * - 400: Stock insuficiente → IllegalArgumentException
+ * WHAT: Verifica ventas (creación, FIFO, stock insuficiente, optimistic locking)
+ *       contra PostgreSQL real via Testcontainers.
+ * WHY: La lógica FIFO depende de queries JPA que deben funcionar idéntico en test y producción.
+ * DIFFERENCES: Antes usaba @SpringBootTest directo con H2; ahora extiende
+ *              AbstractIntegrationTest que provee PostgreSQL via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-class SaleControllerIT {
+class SaleControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;

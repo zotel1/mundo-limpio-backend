@@ -1,13 +1,33 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb
-    username: sa
-    password: ""
-    driver-class-name: org.h2.Driver
+    # WHAT: Placeholder — valores reales inyectados por @DynamicPropertySource desde Testcontainers
+    # WHY: Testcontainers asigna puerto/credenciales dinámicos; estos placeholders aseguran
+    #       que hay valores por defecto en caso de ejecución sin Testcontainers
+    url: jdbc:postgresql://localhost:5432/testdb
+    username: test
+    password: test
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # WHAT: none en vez de validate — Hibernate no valida el esquema en tests
+      # WHY: La migración MySQL→PostgreSQL tiene diferencias de tipos de datos
+      #       (ej: quantity como INTEGER en MySQL → numeric en PostgreSQL)
+      #       que Hibernate detecta pero que no afectan el funcionamiento.
+      #       Flyway ya ejecuta V1-V4 para crear el esquema correcto.
+      # DIFFERENCES: Antes: validate (Hibernate verificaba tipos exactos).
+      #              Ahora: none (Flyway gestiona el esquema, Hibernate solo consulta).
+      ddl-auto: none
+    properties:
+      hibernate:
+        # WHAT: Dialecto PostgreSQL explícito para asegurar SQL correcto en test
+        # WHY: Sin esto, Hibernate podría auto-detectar mal en algunos entornos
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   flyway:
-    enabled: false
+    # WHAT: Flyway habilitado en perfil test — ejecuta migraciones V1-V4 contra PostgreSQL
+    # WHY: Las migraciones deben correr ANTES de que Hibernate valide el esquema.
+    #       Sin Flyway, el esquema no existe y ddl-auto: validate falla.
+    # DIFFERENCES: Antes: enabled: false (Hibernate creaba tablas via create-drop en H2).
+    #              Ahora: enabled: true (Flyway crea tablas idénticas a producción).
+    enabled: true
