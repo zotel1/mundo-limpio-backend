@@ -13,6 +13,17 @@ application:
       refresh-expiration: 604800000 # 7 dias (para refresh tokens)
       #algorithm: HS256 # Algoritmo explicito
 
+# WHAT: Límite de tamaño para uploads multipart (imágenes de tickets).
+# WHY: REC-002 define 10MB como máximo para imágenes de tickets.
+#      Spring Boot por defecto limita a 1MB — necesitamos 10MB.
+# DIFFERENCES: max-file-size controla el tamaño individual de archivo;
+#              max-request-size controla el tamaño total del request multipart.
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
 # WHAT: Configuración de Supabase Storage para almacenamiento de imágenes de tickets.
 # WHY: Supabase Storage expone API S3-compatible. Usamos el SDK AWS S3 para subir imágenes.
 #      Las credenciales vienen de variables de entorno por seguridad.
