@@ -8,6 +8,7 @@ import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -56,6 +57,7 @@ class PurchaseRepositoryTest extends AbstractIntegrationTest {
      * Triangulación: verificamos que la compra y sus items se persisten juntos.
      */
     @Test
+    @Transactional
     void testSaveAndFind_PurchaseWithItems() {
         // Given
         Purchase purchase = new Purchase(
@@ -66,7 +68,7 @@ class PurchaseRepositoryTest extends AbstractIntegrationTest {
                 PurchaseStatus.PENDING);
 
         purchase.addItem(new PurchaseItem("Cloro 5L", 2,
-                new BigDecimal("150.00"), new BigDecimal("300.00"), 1L));
+                new BigDecimal("150.00"), new BigDecimal("300.00"), null));
 
         // When
         Purchase saved = purchaseRepository.save(purchase);
