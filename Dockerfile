@@ -22,6 +22,12 @@ RUN mvn clean package -DskipTests
 #              Ahora eclipse-temurin:21-jre-alpine (~180MB imagen final esperada).
 FROM eclipse-temurin:21-jre-alpine
 
+# WHAT: Instalar Tesseract OCR con language pack español (spa).
+# WHY: tesseract-ocr es el motor OCR; tesseract-ocr-data-spa contiene
+#      el modelo de idioma español necesario para leer tickets argentinos.
+#      Sin el language pack, Tesseract solo funciona en inglés.
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-spa
+
 # Crear usuario no-root para seguridad
 # WHAT: Usuario 'cloudrun' con UID 1001, sin privilegios de root
 # WHY: Cloud Run recomienda no-root por seguridad. Si un atacante explota la app,

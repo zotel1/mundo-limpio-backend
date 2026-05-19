@@ -98,6 +98,21 @@
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
 		</dependency>
+		<!-- WHAT: Tess4J — wrapper Java de Tesseract OCR engine -->
+		<!-- WHY: Necesitamos OCR para extraer datos estructurados de fotos de tickets de compra -->
+		<dependency>
+			<groupId>net.sourceforge.tess4j</groupId>
+			<artifactId>tess4j</artifactId>
+			<version>5.13.0</version>
+		</dependency>
+		<!-- WHAT: AWS S3 SDK v2 — cliente S3-compatible para Supabase Storage -->
+		<!-- WHY: Supabase Storage expone API S3-compatible; mismo cliente funciona con AWS S3 sin cambios -->
+		<!-- DIFFERENCES: Usamos la API síncrona simple (S3Client) en vez del async (S3AsyncClient) -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<version>2.28.29</version>
+		</dependency>
 		<!-- TEST DEPENDENCIES -->
 		<!-- Spring Boot Test (includes TestRestTemplate, Mockito, AssertJ, etc.) -->
 		<dependency>

@@ -15,6 +15,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import org.springframework.boot.test.mock.mockito.MockBean;
+import net.sourceforge.tess4j.ITesseract;
+import software.amazon.awssdk.services.s3.S3Client;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
@@ -104,6 +108,18 @@ class ProdConfigTest {
 
     @Autowired
     private Environment environment;
+
+    /**
+     * WHAT: Mocks para dependencias externas del módulo receipt.
+     * WHY: ProdConfigTest carga el perfil "prod" que incluye los beans
+     *      del módulo receipt (TesseractOcrService, SupabaseStorageService).
+     *      Sin estos mocks, el contexto falla porque no hay credenciales reales.
+     */
+    @MockBean
+    private ITesseract tesseract;
+
+    @MockBean
+    private S3Client s3Client;
 
     /**
      * Lee el contenido de application-prod.yml para verificaciones directas.
