@@ -18,8 +18,8 @@ import org.springframework.web.bind.annotation.*;
  *
  * POR QUÉ ESTA IMPLEMENTACIÓN:
  * - Seguimos exactamente el patrón de BulkProductController para consistencia.
- * - @PreAuthorize("hasRole('ADMIN')") asegura que solo ADMIN pueda crear ventas.
- *   El OPERATOR no tiene acceso — su rol es solo consultar (futuros endpoints GET).
+ * - @PreAuthorize("hasAnyRole('ADMIN','SALES_CLERK')") permite que ADMIN y vendedores
+ *   creen ventas. Otros roles (STOCK_MANAGER, PRODUCTION_OP, ACCOUNTANT) no tienen acceso.
  * - @Valid valida el SaleRequest automáticamente antes de entrar al método.
  *   Si productId es null o quantity <= 0, retorna 400 sin ejecutar lógica.
  * - ResponseEntity.status(HttpStatus.CREATED) es el estándar REST: POST exitoso = 201.
@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/v1/sales")
-@Tag(name = "Sales", description = "Endpoints para la gestión de ventas (ADMIN only)")
+@Tag(name = "Sales", description = "Endpoints para la gestión de ventas (ADMIN y SALES_CLERK)")
 public class SaleController {
 
     private final SaleService service;
@@ -61,10 +61,13 @@ public class SaleController {
      * - El body contiene el SaleResponse con id, totalAmount, items.
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SALES_CLERK')")
+    // WHAT: Vendedores (SALES_CLERK) pueden crear ventas
+    // WHY: Separacion de responsabilidades — el vendedor registra ventas,
+    //      no gestiona productos ni inventario
     @Operation(
             summary = "Create a new sale",
-            description = "Creates a new sale with FIFO stock deduction. Only ADMIN can access. " +
+            description = "Creates a new sale with FIFO stock deduction. ADMIN and SALES_CLERK can access. " +
                     "Stock is deducted from the oldest production batches first."
     )
     @ApiResponses({
