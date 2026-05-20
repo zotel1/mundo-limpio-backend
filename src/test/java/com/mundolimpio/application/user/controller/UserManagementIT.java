@@ -126,7 +126,7 @@ class UserManagementIT extends AbstractIntegrationTest {
         // Given: admin autenticado + 1 OPERATOR en DB
         AdminContext admin = createAdminContext();
         userRepository.save(new User("operator", "operator@mundolimpio.com",
-                passwordEncoder.encode("pass123"), Role.OPERATOR));
+                passwordEncoder.encode("pass123"), Role.SALES_CLERK));
 
         // When: GET /api/v1/users como ADMIN
         HttpEntity<Void> entity = new HttpEntity<>(authHeaders(admin.token()));
@@ -195,7 +195,7 @@ class UserManagementIT extends AbstractIntegrationTest {
     void findAll_Operator_ShouldReturn403() {
         // Given: OPERATOR autenticado (sin rol ADMIN)
         User operator = new User("operator", "operator@mundolimpio.com",
-                passwordEncoder.encode("pass123"), Role.OPERATOR);
+                passwordEncoder.encode("pass123"), Role.SALES_CLERK);
         operator = userRepository.save(operator);
         String operatorToken = jwtService.generateToken(operator);
 
@@ -230,7 +230,7 @@ class UserManagementIT extends AbstractIntegrationTest {
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
                 new User("operator", "operator@mundolimpio.com",
-                        passwordEncoder.encode("pass123"), Role.OPERATOR));
+                        passwordEncoder.encode("pass123"), Role.SALES_CLERK));
 
         // When: PATCH /api/v1/users/{id}/role con newRole=ADMIN
         ChangeRoleRequest request = new ChangeRoleRequest("ADMIN");
@@ -277,7 +277,7 @@ class UserManagementIT extends AbstractIntegrationTest {
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
                 new User("operator", "operator@mundolimpio.com",
-                        passwordEncoder.encode("pass123"), Role.OPERATOR));
+                        passwordEncoder.encode("pass123"), Role.SALES_CLERK));
 
         // When: PATCH con rol inválido
         ChangeRoleRequest request = new ChangeRoleRequest("INVALID");
@@ -389,7 +389,7 @@ class UserManagementIT extends AbstractIntegrationTest {
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
                 new User("operator", "operator@mundolimpio.com",
-                        passwordEncoder.encode("oldPass123"), Role.OPERATOR));
+                        passwordEncoder.encode("oldPass123"), Role.SALES_CLERK));
 
         // When: ADMIN resetea la contraseña del operator
         ResetPasswordRequest request = new ResetPasswordRequest("NewPass123");

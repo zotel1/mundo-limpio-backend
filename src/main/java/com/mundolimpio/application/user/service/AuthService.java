@@ -86,7 +86,7 @@ public class AuthService {
 
         // 3. Crear y persistir el usuario
         User user = new User(username, request.email(),
-                passwordEncoder.encode(request.password()), Role.OPERATOR);
+                passwordEncoder.encode(request.password()), Role.SALES_CLERK);
         User saved = userRepository.save(user);
 
         // 4. Generar tokens

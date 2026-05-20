@@ -69,7 +69,7 @@ class UserManagementServiceTest {
         userAdmin = new User("admin", "admin@mundolimpio.com", "encoded-password", Role.ADMIN);
         userAdmin.setId(1L);
 
-        userOperator = new User("operator", "operator@mundolimpio.com", "encoded-password", Role.OPERATOR);
+        userOperator = new User("operator", "operator@mundolimpio.com", "encoded-password", Role.SALES_CLERK);
         userOperator.setId(2L);
 
         // Creamos UserResponse esperados para verify

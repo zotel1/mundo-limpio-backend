@@ -69,7 +69,7 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
         adminToken = jwtService.generateToken(admin);
 
         // Crear operator para test de forbidden
-        User operator = new User("operator_test", "$2a$10$encodedPassword", Role.OPERATOR);
+        User operator = new User("operator_test", "$2a$10$encodedPassword", Role.SALES_CLERK);
         userRepository.save(operator);
         operatorToken = jwtService.generateToken(operator);
     }
