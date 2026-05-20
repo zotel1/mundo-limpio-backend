@@ -101,9 +101,11 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id").value(1))
                 .andExpect(jsonPath("$[0].username").value("admin"))
+                .andExpect(jsonPath("$[0].email").value("admin@mundolimpio.com"))
                 .andExpect(jsonPath("$[0].role").value("ADMIN"))
                 .andExpect(jsonPath("$[1].id").value(2))
                 .andExpect(jsonPath("$[1].username").value("operator"))
+                .andExpect(jsonPath("$[1].email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$[1].role").value("OPERATOR"));
     }
 
@@ -164,6 +166,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
                 .andExpect(jsonPath("$.username").value("operator"))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.role").value("OPERATOR"));
     }
 
@@ -215,6 +218,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.role").value("ADMIN"));
     }
 
@@ -336,6 +340,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.username").value("operator"));
     }
 
