@@ -1,3 +1,8 @@
+### DEPRECATED — replaced by Render deploy pipeline (render.yaml + render-deploy.yml)
+### This file was for Google Cloud Run. Kept for reference only.
+### Last active: never (trigger was configured but never connected to production).
+### See docs/deployment.md for current Render deployment instructions.
+
 # ============================================================
 # Cloud Build Pipeline — MundoLimpio Backend
 # ============================================================
