@@ -7,22 +7,26 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Entidad User que representa un usuario del sistema.
  * Implementa UserDetails para integrarse con Spring Security.
  * <p>
- * WHAT: getUsername() ahora devuelve email para que Spring Security y JwtService
- * usen email como identificador de autenticación sin modificar esos componentes.
- * El username real se preserva vía getRawUsername() como display name.
+ * WHAT: Soporta multiples roles via @ElementCollection Set<Role> mapeado a
+ * la tabla user_roles. getUsername() devuelve email para que Spring Security
+ * y JwtService usen email como identificador de autenticación.
  * <p>
- * WHY: El frontend Flutter envía email+password. El backend debe aceptar email
- * como identificador primario. JWT sub = email automáticamente.
+ * WHY: El modelo RBAC se expande de 2 roles (ADMIN/OPERATOR) a 6 roles
+ * con asignacion multiple. Un usuario puede ser STOCK_MANAGER y SALES_CLERK
+ * simultaneamente (UR-R2). El constructor varargs Role... mantiene backward
+ * compatibility con codigo existente.
  * <p>
- * DIFFERENCES: Antes getUsername() devolvía el username. Ahora devuelve email.
- * Constructor anterior (3 params) delegado al nuevo (4 params) con email fallback.
- * */
+ * DIFFERENCES: Antes User tenia un solo Role (campo role). Ahora tiene
+ * Set<Role> (campo roles) con @ElementCollection. getRole() y setRole()
+ * quedan como @Deprecated para compatibilidad durante la transicion.
+ */
 @Entity
 @Table(name = "users")
 public class User implements UserDetails {
@@ -40,9 +44,17 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String password;
 
+    /**
+     * WHAT: Set de roles asignados al usuario.
+     * WHY: @ElementCollection con @CollectionTable mapea la relacion 1:N
+     * a la tabla user_roles sin necesidad de una entidad intermedia.
+     * EAGER porque siempre necesitamos los roles para getAuthorities().
+     */
+    @ElementCollection(fetch = FetchType.EAGER, targetClass = Role.class)
+    @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private Role role;
+    @Column(name = "role")
+    private Set<Role> roles = new HashSet<>();
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -54,8 +66,8 @@ public class User implements UserDetails {
      * Constructor anterior (3 params) — mantenido para backward compatibility
      * durante la migración. Delega al nuevo constructor con email fallback.
      *
-     * @deprecated Usar {@link #User(String, String, String, Role)} con email explícito.
-     *             Será removido en Phase 2 cuando todos los tests migren al nuevo constructor.
+     * @deprecated Usar {@link #User(String, String, String, Role...)} con email explícito.
+     *             Será removido cuando todos los tests migren al nuevo constructor.
      */
     @Deprecated
     public User(String username, String password, Role role) {
@@ -63,18 +75,24 @@ public class User implements UserDetails {
     }
 
     /**
-     * Nuevo constructor (4 params) con email explícito.
+     * Constructor con varargs Role... para asignacion multiple de roles.
+     * <p>
+     * WHAT: Acepta cero o mas roles. Si se pasa un solo rol (ej: Role.ADMIN),
+     * funciona igual que el constructor anterior — backward compatible.
+     * WHY: new User("u","e","p", Role.ADMIN) sigue compilando sin cambios.
      *
      * @param username username auto-generado desde el prefijo del email (display name)
      * @param email    email del usuario (identificador de autenticación)
      * @param password contraseña (debe estar encodeada)
-     * @param role     rol del usuario (ADMIN u OPERATOR)
+     * @param roles    cero o mas roles asignados al usuario
      */
-    public User(String username, String email, String password, Role role) {
+    public User(String username, String email, String password, Role... roles) {
         this.username = username;
         this.email = email;
         this.password = password;
-        this.role = role;
+        if (roles.length > 0) {
+            this.roles = new HashSet<>(Set.of(roles));
+        }
         this.createdAt = Instant.now();
     }
 
@@ -127,12 +145,57 @@ public class User implements UserDetails {
         this.password = password;
     }
 
-    public Role getRole() {
-        return role;
+    /**
+     * WHAT: Devuelve todos los roles asignados al usuario.
+     * WHY: Reemplaza al antiguo getRole() para soportar multiples roles.
+     *
+     * @return Set<Role> inmutable copia del set interno (nunca null)
+     */
+    public Set<Role> getRoles() {
+        return Set.copyOf(roles);
     }
 
+    /**
+     * WHAT: Reemplaza completamente los roles del usuario.
+     * WHY: Usado por UserManagementService.changeRoles() para asignar
+     * el nuevo conjunto de roles desde el PATCH /users/{id}/roles.
+     *
+     * @param roles nuevo conjunto de roles (no null)
+     */
+    public void setRoles(Set<Role> roles) {
+        this.roles = roles != null ? new HashSet<>(roles) : new HashSet<>();
+    }
+
+    /**
+     * WHAT: Devuelve el primer rol del Set (o null si no tiene).
+     *
+     * @return el primer Role o null
+     * @deprecated Usar {@link #getRoles()} para obtener todos los roles.
+     *             Este metodo existe solo para backward compatibility
+     *             durante la transicion al modelo multi-rol.
+     */
+    @Deprecated
+    public Role getRole() {
+        return roles.isEmpty() ? null : roles.iterator().next();
+    }
+
+    /**
+     * WHAT: Reemplaza todos los roles con un solo rol.
+     * WHY: Backward compatibility con codigo que usaba setRole() para
+     * asignar un unico rol. El comportamiento original era REEMPLAZAR,
+     * no agregar. Mantenemos esa semantica.
+     *
+     * @param role el unico rol a asignar (null = sin roles)
+     * @deprecated Usar {@link #setRoles(Set)} para asignar multiples roles.
+     *             Este metodo existe solo para backward compatibility
+     *             durante la transicion al modelo multi-rol.
+     */
+    @Deprecated
     public void setRole(Role role) {
-        this.role = role;
+        this.roles.clear();
+        if (role != null) {
+            this.roles.add(role);
+        }
     }
 
     public Instant getCreatedAt() {
@@ -143,9 +206,20 @@ public class User implements UserDetails {
         this.createdAt = createdAt;
     }
 
+    /**
+     * WHAT: Devuelve todas las autoridades de Spring Security para este usuario.
+     * Cada Role se mapea a SimpleGrantedAuthority con prefijo "ROLE_".
+     * WHY: UR-R2 — Spring Security evalua hasAnyRole() sobre la union de todas
+     * las autoridades. Si un usuario tiene STOCK_MANAGER y SALES_CLERK, tendra
+     * ROLE_STOCK_MANAGER y ROLE_SALES_CLERK.
+     *
+     * @return coleccion de GrantedAuthority (vacia si no tiene roles)
+     */
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+        return roles.stream()
+                .map(r -> new SimpleGrantedAuthority("ROLE_" + r.name()))
+                .toList();
     }
 
     @Override

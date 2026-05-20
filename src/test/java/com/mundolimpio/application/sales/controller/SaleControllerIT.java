@@ -84,7 +84,7 @@ class SaleControllerIT extends AbstractIntegrationTest {
         userRepository.save(admin);
 
         // Crear usuario OPERATOR (NO puede crear ventas — solo el ADMIN)
-        User operator = new User("operator_sales", "password123", Role.OPERATOR);
+        User operator = new User("operator_sales", "password123", Role.SALES_CLERK);
         userRepository.save(operator);
 
         // Generar JWT tokens para cada usuario
