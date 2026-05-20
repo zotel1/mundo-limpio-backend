@@ -35,6 +35,12 @@ public class BulkProduct {
     @Column(nullable = false, name = "conversion_ratio")
     private BigDecimal conversionRatio;
 
+    // WHAT: Soporte para soft delete. Mirror de Product.active.
+    // WHY: FK constraints requieren que la fila persista.
+    // DIFFERENCES: Product no tiene @Column explícito; BulkProduct sí para documentar NOT NULL.
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
+    private Boolean active = true;
+
     @Version
     private Long version;
 
@@ -86,6 +92,14 @@ public class BulkProduct {
 
     public void setConversionRatio(BigDecimal conversionRatio) {
         this.conversionRatio = conversionRatio;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
     }
 
     public Long getVersion() {
