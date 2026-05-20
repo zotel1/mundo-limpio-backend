@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -46,6 +47,7 @@ public class ProductController {
      * @return ProductResponse con el producto creado (201 CREATED)
      */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Create a new product",
             description = "Creates a new product with unique SKU. SKU must contain only uppercase letters, numbers, and hyphens."
@@ -146,6 +148,7 @@ public class ProductController {
      * @return ProductResponse con el producto actualizado (200 OK)
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Update an existing product",
             description = "Updates all fields of a product. " +
@@ -178,6 +181,7 @@ public class ProductController {
      * @return 204 NO_CONTENT
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Delete a product (soft delete)",
             description = "Performs a soft delete: marks the product as inactive (active=false). " +
@@ -201,6 +205,7 @@ public class ProductController {
      * @return 204 NO_CONTENT
      */
     @PatchMapping("/{id}/reactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Reactivate an inactive product",
             description = "Reverses a soft delete: marks the product as active (active=true). " +

@@ -12,10 +12,15 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -175,6 +180,80 @@ class SecurityConfigProductAccessTest {
     @Test
     void getSales_WithoutAuth_Returns401() throws Exception {
         mockMvc.perform(get("/api/v1/sales"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * WHAT: POST /api/v1/products sin autenticacion retorna 401 Unauthorized.
+     *
+     * WHY: Los endpoints de escritura de productos (POST, PUT, DELETE, PATCH)
+     *      deben requerir autenticacion ADMIN. Sin token JWT, el filter de
+     *      seguridad debe rechazar el request antes de llegar al controller.
+     *
+     * GIVEN: Sin header Authorization
+     * WHEN:  POST /api/v1/products con body JSON valido
+     * THEN:  HTTP 401 Unauthorized
+     */
+    @Test
+    void postProduct_WithoutAuth_Returns401() throws Exception {
+        String productJson = """
+                {
+                    "sku": "TEST-001",
+                    "name": "Test Product",
+                    "minPrice": 10.00
+                }
+                """;
+        mockMvc.perform(post("/api/v1/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * WHAT: PUT /api/v1/products/{id} sin autenticacion retorna 401.
+     *
+     * GIVEN: Sin header Authorization
+     * WHEN:  PUT /api/v1/products/1 con body JSON valido
+     * THEN:  HTTP 401 Unauthorized
+     */
+    @Test
+    void putProduct_WithoutAuth_Returns401() throws Exception {
+        String productJson = """
+                {
+                    "sku": "TEST-002",
+                    "name": "Updated Product",
+                    "minPrice": 15.00
+                }
+                """;
+        mockMvc.perform(put("/api/v1/products/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * WHAT: DELETE /api/v1/products/{id} sin autenticacion retorna 401.
+     *
+     * GIVEN: Sin header Authorization
+     * WHEN:  DELETE /api/v1/products/1
+     * THEN:  HTTP 401 Unauthorized
+     */
+    @Test
+    void deleteProduct_WithoutAuth_Returns401() throws Exception {
+        mockMvc.perform(delete("/api/v1/products/1"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * WHAT: PATCH /api/v1/products/{id}/reactivate sin autenticacion retorna 401.
+     *
+     * GIVEN: Sin header Authorization
+     * WHEN:  PATCH /api/v1/products/1/reactivate
+     * THEN:  HTTP 401 Unauthorized
+     */
+    @Test
+    void patchReactivate_WithoutAuth_Returns401() throws Exception {
+        mockMvc.perform(patch("/api/v1/products/1/reactivate"))
                 .andExpect(status().isUnauthorized());
     }
 }
