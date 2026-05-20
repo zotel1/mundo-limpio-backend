@@ -21,6 +21,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -28,15 +30,18 @@ import java.util.stream.Collectors;
  * Servicio de autenticación: registro, login y refresh de tokens.
  * <p>
  * WHAT: register() acepta email+password, verifica unicidad de email,
- * auto-genera username desde el prefijo del email, y devuelve LoginResponse
- * con ambos campos (email + username). login() autentica por email.
+ * auto-genera username desde el prefijo del email, crea usuario SIN roles
+ * (UR-R4: admin asigna roles luego), y devuelve LoginResponse con campos
+ * email + username + roles. login() y refresh() autentican por email.
  * <p>
  * WHY: El frontend Flutter envía email+password. Spring Security autentica
  * con UsernamePasswordAuthenticationToken(email, password). User.getUsername()
- * devuelve email → JWT sub = email automáticamente.
+ * devuelve email → JWT sub = email automáticamente. El usuario nuevo no tiene
+ * roles hasta que un ADMIN los asigne via PATCH /users/{id}/roles.
  * <p>
- * DIFFERENCES: Antes register/login usaban username como identificador.
- * Ahora usan email. El username se auto-genera y se devuelve como display name.
+ * DIFFERENCES: Antes register asignaba Role.SALES_CLERK por defecto. Ahora
+ * asigna Set.of() (sin roles). LoginResponse ahora incluye campo roles
+ * con la lista completa de roles del usuario.
  */
 @Service
 public class AuthService {
@@ -67,12 +72,15 @@ public class AuthService {
      * Registra un nuevo usuario con email+password.
      * <p>
      * WHAT: Verifica que el email no esté duplicado, genera un username único
-     * desde el prefijo del email, persiste el usuario con role OPERATOR,
-     * y devuelve LoginResponse con email + username + tokens.
+     * desde el prefijo del email, persiste el usuario SIN roles
+     * (UR-R4: admin asigna roles luego via PATCH /users/{id}/roles),
+     * y devuelve LoginResponse con email + username + roles + tokens.
      * WHY: El frontend envía email; el username es interno para display/admin.
+     * El usuario nuevo no debe tener permisos hasta que un ADMIN se los asigne.
+     * DIFFERENCES: Antes asignaba Role.SALES_CLERK. Ahora asigna Set.of().
      *
      * @param request DTO con email y password
-     * @return LoginResponse con tokens, email, username, role y createdAt
+     * @return LoginResponse con tokens, email, username, roles y createdAt
      * @throws ResponseStatusException 409 si el email ya está en uso
      */
     public LoginResponse register(RegisterRequest request) {
@@ -84,19 +92,17 @@ public class AuthService {
         // 2. Generar username único desde el prefijo del email
         String username = generateUniqueUsername(request.email());
 
-        // 3. Crear y persistir el usuario
+        // 3. Crear y persistir el usuario SIN roles (UR-R4: admin asigna despues)
         User user = new User(username, request.email(),
-                passwordEncoder.encode(request.password()), Role.OPERATOR);
+                passwordEncoder.encode(request.password()) /* sin roles: varargs vacio */);
         User saved = userRepository.save(user);
 
         // 4. Generar tokens
         String accessToken = jwtService.generateToken(saved);
         String refreshToken = jwtService.generateToken(saved, refreshExpiration);
 
-        // 5. Construir respuesta con email + username
-        return new LoginResponse(accessToken, refreshToken,
-                saved.getRole().name(), saved.getEmail(),
-                saved.getRawUsername(), saved.getCreatedAt());
+        // 5. Construir respuesta con email + username + roles
+        return buildLoginResponse(saved, accessToken, refreshToken);
     }
 
     /**
@@ -125,10 +131,8 @@ public class AuthService {
         String accessToken = jwtService.generateToken(user);
         String refreshToken = jwtService.generateToken(user, refreshExpiration);
 
-        // 4. Construir respuesta con email + username
-        return new LoginResponse(accessToken, refreshToken,
-                user.getRole().name(), user.getEmail(),
-                user.getRawUsername(), user.getCreatedAt());
+        // 4. Construir respuesta con email + username + roles
+        return buildLoginResponse(user, accessToken, refreshToken);
     }
 
     /**
@@ -188,16 +192,41 @@ public class AuthService {
         String newAccessToken = jwtService.generateToken(userDetails);
         String newRefreshToken = jwtService.generateToken(userDetails, refreshExpiration);
 
-        // 5. Construir respuesta con email + username
+        // 5. Construir respuesta con email + username + roles
         User user = (User) userDetails;
 
+        return buildLoginResponse(user, newAccessToken, newRefreshToken);
+    }
+
+    /**
+     * Construye un LoginResponse a partir del usuario y los tokens.
+     * <p>
+     * WHAT: Mapea los roles del usuario a List<String> para el campo roles
+     * y extrae el primer rol (o null) para el campo role deprecated.
+     * WHY: Centraliza la construccion de LoginResponse para evitar duplicacion
+     * en register(), login() y refresh(). El campo role deprecated se llena
+     * con el primer rol para backward compatibility con clientes viejos.
+     *
+     * @param user        usuario autenticado/registrado
+     * @param accessToken JWT access token
+     * @param refreshToken JWT refresh token
+     * @return LoginResponse con todos los campos poblados
+     */
+    private LoginResponse buildLoginResponse(User user, String accessToken, String refreshToken) {
+        Set<Role> userRoles = user.getRoles();
+        List<String> roleStrings = userRoles.stream()
+                .map(Enum::name)
+                .toList();
+        String deprecatedRole = user.getRole() != null ? user.getRole().name() : null;
+
         return new LoginResponse(
-                newAccessToken,
-                newRefreshToken,
-                user.getRole().name(),
+                accessToken,
+                refreshToken,
+                deprecatedRole,
                 user.getEmail(),
                 user.getRawUsername(),
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                roleStrings
         );
     }
 

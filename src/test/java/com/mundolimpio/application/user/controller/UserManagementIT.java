@@ -3,7 +3,7 @@ package com.mundolimpio.application.user.controller;
 import com.mundolimpio.application.common.dto.ErrorResponse;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
-import com.mundolimpio.application.user.dto.ChangeRoleRequest;
+import com.mundolimpio.application.user.dto.ChangeRolesRequest;
 import com.mundolimpio.application.user.dto.LoginRequest;
 import com.mundolimpio.application.user.dto.LoginResponse;
 import com.mundolimpio.application.user.dto.ResetPasswordRequest;
@@ -20,6 +20,8 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -126,7 +128,7 @@ class UserManagementIT extends AbstractIntegrationTest {
         // Given: admin autenticado + 1 OPERATOR en DB
         AdminContext admin = createAdminContext();
         userRepository.save(new User("operator", "operator@mundolimpio.com",
-                passwordEncoder.encode("pass123"), Role.OPERATOR));
+                passwordEncoder.encode("pass123"), Role.SALES_CLERK));
 
         // When: GET /api/v1/users como ADMIN
         HttpEntity<Void> entity = new HttpEntity<>(authHeaders(admin.token()));
@@ -195,7 +197,7 @@ class UserManagementIT extends AbstractIntegrationTest {
     void findAll_Operator_ShouldReturn403() {
         // Given: OPERATOR autenticado (sin rol ADMIN)
         User operator = new User("operator", "operator@mundolimpio.com",
-                passwordEncoder.encode("pass123"), Role.OPERATOR);
+                passwordEncoder.encode("pass123"), Role.SALES_CLERK);
         operator = userRepository.save(operator);
         String operatorToken = jwtService.generateToken(operator);
 
@@ -230,18 +232,18 @@ class UserManagementIT extends AbstractIntegrationTest {
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
                 new User("operator", "operator@mundolimpio.com",
-                        passwordEncoder.encode("pass123"), Role.OPERATOR));
+                        passwordEncoder.encode("pass123"), Role.SALES_CLERK));
 
-        // When: PATCH /api/v1/users/{id}/role con newRole=ADMIN
-        ChangeRoleRequest request = new ChangeRoleRequest("ADMIN");
-        HttpEntity<ChangeRoleRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        // When: PATCH /api/v1/users/{id}/roles con roles=[\"ADMIN\"]
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.ADMIN));
+        HttpEntity<ChangeRolesRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
         ResponseEntity<UserResponse> response = restTemplate.exchange(
-                "/api/v1/users/" + operator.getId() + "/role",
+                "/api/v1/users/" + operator.getId() + "/roles",
                 HttpMethod.PATCH, entity, UserResponse.class);
 
-        // Then: 200 OK con role actualizado
+        // Then: 200 OK con roles actualizados
         assertThat(response.getStatusCode())
-                .as("Cambio de rol exitoso debe retornar 200")
+                .as("Cambio de roles exitoso debe retornar 200")
                 .isEqualTo(HttpStatus.OK);
         assertThat(response.getBody())
                 .as("El body no debe ser nulo")
@@ -250,109 +252,100 @@ class UserManagementIT extends AbstractIntegrationTest {
                 .as("El ID debe coincidir con el usuario modificado")
                 .isEqualTo(operator.getId());
         assertThat(response.getBody().role())
-                .as("El role debe ser ADMIN después del cambio")
+                .as("El role legacy debe ser ADMIN despues del cambio")
                 .isEqualTo("ADMIN");
         assertThat(response.getBody().email())
                 .as("El email debe estar presente en la respuesta")
                 .isEqualTo("operator@mundolimpio.com");
 
         // Verificar que el cambio persiste en DB
-        // POR QUÉ verificamos en DB: El integration test debe confirmar
-        // que el dato se persiste realmente, no solo que la respuesta HTTP es correcta.
         User updatedUser = userRepository.findById(operator.getId()).orElseThrow();
-        assertThat(updatedUser.getRole())
-                .as("El role en DB debe ser ADMIN")
-                .isEqualTo(Role.ADMIN);
+        assertThat(updatedUser.getRoles())
+                .as("Los roles en DB deben ser [ADMIN]")
+                .containsExactly(Role.ADMIN);
     }
 
     /**
-     * REQ-3: Cambiar rol con valor inválido.
+     * REQ-3: Cambiar roles con ADMIN combinado con otro rol.
      *
-     * ESCENARIO: WHEN ADMIN PATCH /api/v1/users/2/role {"newRole":"INVALID"}
-     * → THEN 400 INVALID_ROLE.
+     * ESCENARIO: WHEN ADMIN PATCH /api/v1/users/2/roles {"roles":["ADMIN","SALES_CLERK"]}
+     * → THEN 400 ADMIN_EXCLUSIVE.
      */
     @Test
-    void changeRole_InvalidRole_ShouldReturn400() {
+    void changeRoles_AdminExclusive_ShouldReturn400() {
         // Given: admin autenticado + OPERATOR en DB
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
                 new User("operator", "operator@mundolimpio.com",
-                        passwordEncoder.encode("pass123"), Role.OPERATOR));
+                        passwordEncoder.encode("pass123"), Role.SALES_CLERK));
 
-        // When: PATCH con rol inválido
-        ChangeRoleRequest request = new ChangeRoleRequest("INVALID");
-        HttpEntity<ChangeRoleRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        // When: PATCH con ADMIN + SALES_CLERK (viola UR-R3)
+        ChangeRolesRequest request = new ChangeRolesRequest(
+                Set.of(Role.ADMIN, Role.SALES_CLERK));
+        HttpEntity<ChangeRolesRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
         ResponseEntity<ErrorResponse> response = restTemplate.exchange(
-                "/api/v1/users/" + operator.getId() + "/role",
+                "/api/v1/users/" + operator.getId() + "/roles",
                 HttpMethod.PATCH, entity, ErrorResponse.class);
 
-        // Then: 400 INVALID_ROLE
+        // Then: 400 ADMIN_EXCLUSIVE
         assertThat(response.getStatusCode())
-                .as("Rol inválido debe retornar 400")
+                .as("ADMIN combinado debe retornar 400")
                 .isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody())
                 .as("El body de error no debe ser nulo")
                 .isNotNull();
         assertThat(response.getBody().code())
-                .as("El código de error debe ser INVALID_ROLE")
-                .isEqualTo("INVALID_ROLE");
+                .as("El codigo de error debe ser ADMIN_EXCLUSIVE")
+                .isEqualTo("ADMIN_EXCLUSIVE");
     }
 
     /**
-     * REQ-3: Autodemoción.
+     * REQ-3: Self ADMIN removal (UR-R6).
      *
      * ESCENARIO: GIVEN auth ADMIN id=1 → WHEN same ADMIN
-     * PATCH /api/v1/users/1/role {"newRole":"OPERATOR"} → THEN 400 SELF_DEMOTION.
-     *
-     * CÓMO FUNCIONA:
-     * - El helper createAdminContext() crea un ADMIN en DB y genera su JWT.
-     * - Cuando enviamos el request con ese JWT, JwtAuthenticationFilter
-     *   carga el User desde DB y lo setea como principal en SecurityContext.
-     * - getCurrentUserId() en el controller extrae el ID del User principal.
-     * - Como el target ID (admin.id()) es el mismo que el principal ID,
-     *   el servicio lanza SELF_DEMOTION.
+     * PATCH /api/v1/users/1/roles {"roles":["SALES_CLERK"]} → THEN 400 SELF_ADMIN_REMOVAL.
      */
     @Test
-    void changeRole_SelfDemotion_ShouldReturn400() {
+    void changeRoles_SelfAdminRemoval_ShouldReturn400() {
         // Given: admin autenticado
         AdminContext admin = createAdminContext();
 
-        // When: ADMIN intenta cambiar su PROPIO rol a OPERATOR
-        ChangeRoleRequest request = new ChangeRoleRequest("OPERATOR");
-        HttpEntity<ChangeRoleRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        // When: ADMIN intenta quitarse su propio ADMIN
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.SALES_CLERK));
+        HttpEntity<ChangeRolesRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
         ResponseEntity<ErrorResponse> response = restTemplate.exchange(
-                "/api/v1/users/" + admin.id() + "/role",
+                "/api/v1/users/" + admin.id() + "/roles",
                 HttpMethod.PATCH, entity, ErrorResponse.class);
 
-        // Then: 400 SELF_DEMOTION
+        // Then: 400 SELF_ADMIN_REMOVAL
         assertThat(response.getStatusCode())
-                .as("Autodemoción debe retornar 400")
+                .as("Auto-remocion de ADMIN debe retornar 400")
                 .isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody())
                 .as("El body de error no debe ser nulo")
                 .isNotNull();
         assertThat(response.getBody().code())
-                .as("El código de error debe ser SELF_DEMOTION")
-                .isEqualTo("SELF_DEMOTION");
+                .as("El codigo de error debe ser SELF_ADMIN_REMOVAL")
+                .isEqualTo("SELF_ADMIN_REMOVAL");
     }
 
     /**
-     * REQ-3: Cambiar rol de usuario inexistente.
+     * REQ-3: Cambiar roles de usuario inexistente.
      *
      * ESCENARIO: GIVEN user id=99 missing → WHEN ADMIN
-     * PATCH /api/v1/users/99/role {"newRole":"OPERATOR"}
+     * PATCH /api/v1/users/99/roles {"roles":["SALES_CLERK"]}
      * → THEN 404 USER_NOT_FOUND.
      */
     @Test
-    void changeRole_UserNotFound_ShouldReturn404() {
+    void changeRoles_UserNotFound_ShouldReturn404() {
         // Given: admin autenticado
         AdminContext admin = createAdminContext();
 
         // When: PATCH a usuario inexistente (ID 999)
-        ChangeRoleRequest request = new ChangeRoleRequest("OPERATOR");
-        HttpEntity<ChangeRoleRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.SALES_CLERK));
+        HttpEntity<ChangeRolesRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
         ResponseEntity<ErrorResponse> response = restTemplate.exchange(
-                "/api/v1/users/999/role",
+                "/api/v1/users/999/roles",
                 HttpMethod.PATCH, entity, ErrorResponse.class);
 
         // Then: 404 USER_NOT_FOUND
@@ -363,7 +356,7 @@ class UserManagementIT extends AbstractIntegrationTest {
                 .as("El body de error no debe ser nulo")
                 .isNotNull();
         assertThat(response.getBody().code())
-                .as("El código de error debe ser USER_NOT_FOUND")
+                .as("El codigo de error debe ser USER_NOT_FOUND")
                 .isEqualTo("USER_NOT_FOUND");
     }
 
@@ -389,7 +382,7 @@ class UserManagementIT extends AbstractIntegrationTest {
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
                 new User("operator", "operator@mundolimpio.com",
-                        passwordEncoder.encode("oldPass123"), Role.OPERATOR));
+                        passwordEncoder.encode("oldPass123"), Role.SALES_CLERK));
 
         // When: ADMIN resetea la contraseña del operator
         ResetPasswordRequest request = new ResetPasswordRequest("NewPass123");

@@ -82,7 +82,7 @@ class AuthServiceTest {
     void setUp() {
         // Creamos un User real (no mock) porque refresh() castea UserDetails a User
         // para obtener getRole() y getCreatedAt(). Un mock de UserDetails no funcionaría.
-        testUser = new User("testuser", "testuser@mundolimpio.com", "encoded-password", Role.OPERATOR);
+        testUser = new User("testuser", "testuser@mundolimpio.com", "encoded-password", Role.SALES_CLERK);
     }
 
     // ==================== TEST 1: Token válido → nuevo par ====================
@@ -117,7 +117,7 @@ class AuthServiceTest {
                 "El access token debe ser el nuevo generado");
         assertEquals("new-refresh-token", response.refreshToken(),
                 "El refresh token debe ser el nuevo generado");
-        assertEquals("OPERATOR", response.role(),
+        assertEquals("SALES_CLERK", response.role(),
                 "El rol debe coincidir con el del usuario");
         assertEquals("testuser", response.username(),
                 "El username debe ser el raw username (display name): " + response.username());
@@ -125,6 +125,10 @@ class AuthServiceTest {
                 "El email debe coincidir con el email del usuario");
         assertNotNull(response.createdAt(),
                 "La fecha de creación no debe ser nula");
+        // WHAT: Verifica que el campo roles (multi-rol) viene poblado
+        assertNotNull(response.roles(), "roles no debe ser null");
+        assertTrue(response.roles().contains("SALES_CLERK"),
+                "roles debe contener SALES_CLERK: " + response.roles());
 
         // Verificamos que se llamaron TODAS las dependencias en el orden correcto
         verify(jwtService).extractUsername("valid-refresh-token");
@@ -281,12 +285,18 @@ class AuthServiceTest {
         assertNotNull(response, "La respuesta no debe ser nula");
         assertEquals("access-token", response.accessToken());
         assertEquals("refresh-token", response.refreshToken());
-        assertEquals("OPERATOR", response.role());
+        // WHAT: register() crea usuarios SIN roles (UR-R4) — role deprecated es null
+        assertNull(response.role(),
+                "register() crea usuario sin roles: role deprecated debe ser null");
         assertEquals("test@mail.com", response.email(),
                 "El campo email debe contener el email del usuario");
         assertEquals("test", response.username(),
                 "El username debe ser el prefijo auto-generado desde el email");
         assertNotNull(response.createdAt());
+        // WHAT: register() ahora crea usuarios sin roles — admin los asigna luego (UR-R4)
+        assertNotNull(response.roles(), "roles no debe ser null (vacio = sin roles)");
+        assertTrue(response.roles().isEmpty(),
+                "register() debe crear usuario con cero roles: " + response.roles());
 
         // Verificar que se usaron las dependencias correctas
         verify(userRepository).existsByEmail("test@mail.com");
@@ -387,7 +397,7 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
                 .thenReturn(new UsernamePasswordAuthenticationToken("test@mail.com", "password123"));
 
-        User user = new User("test", "test@mail.com", "encoded-password", Role.OPERATOR);
+        User user = new User("test", "test@mail.com", "encoded-password", Role.SALES_CLERK);
         user.setId(1L);
         when(userRepository.findByEmail("test@mail.com")).thenReturn(Optional.of(user));
         when(jwtService.generateToken(user)).thenReturn("access-token");
@@ -400,12 +410,16 @@ class AuthServiceTest {
         assertNotNull(response);
         assertEquals("access-token", response.accessToken());
         assertEquals("refresh-token", response.refreshToken());
-        assertEquals("OPERATOR", response.role());
+        assertEquals("SALES_CLERK", response.role());
         assertEquals("test@mail.com", response.email(),
                 "El email en la respuesta debe coincidir con el del request");
         assertEquals("test", response.username(),
                 "El username debe ser el display name del usuario");
         assertNotNull(response.createdAt());
+        // WHAT: login response debe incluir la lista de roles
+        assertNotNull(response.roles(), "roles no debe ser null");
+        assertTrue(response.roles().contains("SALES_CLERK"),
+                "roles debe contener SALES_CLERK: " + response.roles());
 
         // Verificar que el flujo de autenticación usó email
         verify(authenticationManager).authenticate(

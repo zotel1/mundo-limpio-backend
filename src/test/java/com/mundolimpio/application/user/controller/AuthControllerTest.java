@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -63,7 +64,8 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 "OPERATOR",
                 "testuser@mundolimpio.com",
                 "testuser",
-                Instant.now()
+                Instant.now(),
+                List.of("OPERATOR")
         );
 
         when(authService.refresh(any(RefreshRequest.class))).thenReturn(mockResponse);

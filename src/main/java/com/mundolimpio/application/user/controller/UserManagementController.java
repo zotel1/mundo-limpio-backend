@@ -1,7 +1,7 @@
 package com.mundolimpio.application.user.controller;
 
 import com.mundolimpio.application.user.domain.User;
-import com.mundolimpio.application.user.dto.ChangeRoleRequest;
+import com.mundolimpio.application.user.dto.ChangeRolesRequest;
 import com.mundolimpio.application.user.dto.ResetPasswordRequest;
 import com.mundolimpio.application.user.dto.UserResponse;
 import com.mundolimpio.application.user.service.UserManagementService;
@@ -18,32 +18,23 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * Controlador REST para la gestión de usuarios (ADMIN only).
- *
- * QUÉ HACE: Expone endpoints ADMIN para listar, consultar, cambiar rol
- * y resetear contraseña de usuarios del sistema. Separado de AuthController
- * (que solo maneja autenticación pública) para mantener SRP.
- *
- * POR QUÉ seguimos el patrón de InventoryController:
- * - @PreAuthorize("hasRole('ADMIN')") en cada método (no a nivel de clase)
- *   para mantener flexibilidad si en el futuro algún endpoint necesita
- *   un rol diferente.
- * - Constructor injection (no @Autowired en campos).
- * - Swagger/OpenAPI annotations para documentación automática.
- *
- * DIFERENCIA con AuthController:
- * - AuthController tiene endpoints públicos (permitAll en SecurityConfig).
- * - UserManagementController requiere ADMIN en TODOS los endpoints.
- * - AuthController trabaja con LoginResponse (incluye tokens JWT).
- * - UserManagementController trabaja con UserResponse (sin tokens).
- *
- * DIFERENCIA con InventoryController:
- * - InventoryController tiene GET (consulta) y POST (ajuste).
- * - UserManagementController tiene GET (listar/detalle) y PATCH (rol/password).
+ * Controlador REST para la gestion de usuarios (ADMIN only).
+ * <p>
+ * WHAT: Expone endpoints ADMIN para listar, consultar, cambiar roles
+ * (multi-rol via PATCH /{id}/roles) y resetear contraseña de usuarios.
+ * Separado de AuthController (autenticacion publica) para SRP.
+ * <p>
+ * WHY: El modelo RBAC multi-rol requiere un endpoint que acepte Set<Role>
+ * en vez de un solo String. El viejo PATCH /{id}/role queda como @Deprecated
+ * para backward compatibility.
+ * <p>
+ * DIFFERENCES: Antes solo existia PATCH /{id}/role con String newRole.
+ * Ahora el endpoint principal es PATCH /{id}/roles con ChangeRolesRequest
+ * que acepta array JSON de roles (UR-R2).
  */
 @RestController
 @RequestMapping("/api/v1/users")
-@Tag(name = "User Management", description = "Endpoints ADMIN para gestión de usuarios")
+@Tag(name = "User Management", description = "Endpoints ADMIN para gestion de usuarios")
 public class UserManagementController {
 
     private final UserManagementService userManagementService;
@@ -115,53 +106,47 @@ public class UserManagementController {
         return ResponseEntity.ok(response);
     }
 
-    // ========================= CHANGE ROLE =========================
+    // ========================= CHANGE ROLES (MULTI-ROLE) =========================
 
     /**
-     * Cambia el rol de un usuario.
+     * Cambia los roles de un usuario (multi-rol).
+     * <p>
+     * WHAT: Reemplaza todos los roles del usuario target con el Set<Role>
+     * recibido en ChangeRolesRequest. Soporta asignacion multiple de roles
+     * (UR-R2). Valida ADMIN_EXCLUSIVE (UR-R3), EMPTY_ROLES, y
+     * SELF_ADMIN_REMOVAL (UR-R6). Registra auditoria ROLES_CHANGED (UR-R7).
+     * <p>
+     * WHY: Reemplaza al viejo PATCH /{id}/role que solo aceptaba un String.
+     * El nuevo endpoint acepta el Set completo de roles como array JSON.
+     * <p>
+     * DIFFERENCES: Antes PATCH /{id}/role con body {"newRole": "ADMIN"}.
+     * Ahora PATCH /{id}/roles con body {"roles": ["STOCK_MANAGER","SALES_CLERK"]}.
      *
-     * QUÉ HACE: Asigna un nuevo rol (ADMIN u OPERATOR) a un usuario target.
-     * Valida que el ADMIN autenticado no se autodesgrade (extrae su ID
-     * del SecurityContextHolder y lo pasa al servicio para comparación).
-     *
-     * CÓMO FUNCIONA EL FLUJO:
-     * 1. @Valid valida ChangeRoleRequest: newRole no vacío.
-     * 2. @PreAuthorize verifica ROLE_ADMIN.
-     * 3. getCurrentUserId() extrae el ID del ADMIN del SecurityContext.
-     * 4. UserManagementService.changeRole() ejecuta validaciones de negocio.
-     * 5. Si el rol es inválido → IllegalArgumentException → 400 INVALID_ROLE.
-     * 6. Si es autodemoción → IllegalArgumentException → 400 SELF_DEMOTION.
-     * 7. Si el usuario target no existe → UserNotFoundException → 404.
-     *
-     * POR QUÉ extraemos currentUserId en el controller y no en el service:
-     * - El service no debería depender de SecurityContextHolder (acoplamiento).
-     * - El controller es la capa que conoce el contexto HTTP/seguridad.
-     * - El service recibe el ID como parámetro y se mantiene testeable.
-     *
-     * @param id      ID del usuario cuyo rol cambiar
-     * @param request Body con newRole (ADMIN u OPERATOR)
+     * @param id      ID del usuario cuyos roles cambiar
+     * @param request Body con Set<Role> a asignar
      * @return 200 OK con UserResponse actualizado
      */
-    @PatchMapping("/{id}/role")
+    @PatchMapping("/{id}/roles")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
-            summary = "Change user role",
-            description = "Changes the role of a user (ADMIN or OPERATOR). " +
-                    "Prevents self-demotion. Only ADMIN can access."
+            summary = "Change user roles (multi-role)",
+            description = "Replaces all roles of a user with the provided set. " +
+                    "ADMIN cannot be combined with other roles. " +
+                    "An admin cannot remove their own ADMIN role. Only ADMIN can access."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Role changed successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid role or self-demotion"),
+            @ApiResponse(responseCode = "200", description = "Roles changed successfully"),
+            @ApiResponse(responseCode = "400", description = "ADMIN_EXCLUSIVE, EMPTY_ROLES, or SELF_ADMIN_REMOVAL"),
             @ApiResponse(responseCode = "401", description = "Unauthorized: no authentication token"),
             @ApiResponse(responseCode = "403", description = "Forbidden: only ADMIN can access"),
             @ApiResponse(responseCode = "404", description = "User not found")
     })
-    public ResponseEntity<UserResponse> changeRole(
+    public ResponseEntity<UserResponse> changeRoles(
             @PathVariable Long id,
-            @Valid @RequestBody ChangeRoleRequest request) {
-        // Extraer el ID del ADMIN autenticado para la guardia de autodemoción
+            @Valid @RequestBody ChangeRolesRequest request) {
+        // Extraer el ID del ADMIN autenticado para validaciones de autodemoción
         Long currentUserId = getCurrentUserId();
-        UserResponse response = userManagementService.changeRole(id, request.newRole(), currentUserId);
+        UserResponse response = userManagementService.changeRoles(id, request, currentUserId);
         return ResponseEntity.ok(response);
     }
 
