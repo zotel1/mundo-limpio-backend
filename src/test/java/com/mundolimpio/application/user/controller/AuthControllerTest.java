@@ -61,6 +61,7 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 "new-access-token",
                 "new-refresh-token",
                 "OPERATOR",
+                "testuser@mundolimpio.com",
                 "testuser",
                 Instant.now()
         );
@@ -76,6 +77,7 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.accessToken").value("new-access-token"))
                 .andExpect(jsonPath("$.refreshToken").value("new-refresh-token"))
                 .andExpect(jsonPath("$.role").value("OPERATOR"))
+                .andExpect(jsonPath("$.email").value("testuser@mundolimpio.com"))
                 .andExpect(jsonPath("$.username").value("testuser"));
     }
 

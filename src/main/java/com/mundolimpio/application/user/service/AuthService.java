@@ -12,13 +12,32 @@ import com.mundolimpio.application.user.exception.InvalidRefreshTokenException;
 import com.mundolimpio.application.user.repository.UserRepository;
 import io.jsonwebtoken.JwtException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+
+/**
+ * Servicio de autenticación: registro, login y refresh de tokens.
+ * <p>
+ * WHAT: register() acepta email+password, verifica unicidad de email,
+ * auto-genera username desde el prefijo del email, y devuelve LoginResponse
+ * con ambos campos (email + username). login() autentica por email.
+ * <p>
+ * WHY: El frontend Flutter envía email+password. Spring Security autentica
+ * con UsernamePasswordAuthenticationToken(email, password). User.getUsername()
+ * devuelve email → JWT sub = email automáticamente.
+ * <p>
+ * DIFFERENCES: Antes register/login usaban username como identificador.
+ * Ahora usan email. El username se auto-genera y se devuelve como display name.
+ */
 @Service
 public class AuthService {
 
@@ -31,7 +50,12 @@ public class AuthService {
     @Value("${application.security.jwt.refresh-expiration:604800000}")
     private long refreshExpiration;
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService, AuthenticationManager authenticationManager, CustomUserDetailsService customUserDetailsService) {
+    /** Alfabeto para generación de sufijos aleatorios en username. */
+    private static final String SUFFIX_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                       JwtService jwtService, AuthenticationManager authenticationManager,
+                       CustomUserDetailsService customUserDetailsService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
@@ -39,30 +63,72 @@ public class AuthService {
         this.customUserDetailsService = customUserDetailsService;
     }
 
+    /**
+     * Registra un nuevo usuario con email+password.
+     * <p>
+     * WHAT: Verifica que el email no esté duplicado, genera un username único
+     * desde el prefijo del email, persiste el usuario con role OPERATOR,
+     * y devuelve LoginResponse con email + username + tokens.
+     * WHY: El frontend envía email; el username es interno para display/admin.
+     *
+     * @param request DTO con email y password
+     * @return LoginResponse con tokens, email, username, role y createdAt
+     * @throws ResponseStatusException 409 si el email ya está en uso
+     */
     public LoginResponse register(RegisterRequest request) {
-        if (userRepository.findByUsername(request.username()).isPresent()) {
-            throw new RuntimeException("Username already exists");
+        // 1. Verificar unicidad de email
+        if (userRepository.existsByEmail(request.email())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use");
         }
 
-        User user = new User(request.username(), passwordEncoder.encode(request.password()), Role.OPERATOR);
+        // 2. Generar username único desde el prefijo del email
+        String username = generateUniqueUsername(request.email());
+
+        // 3. Crear y persistir el usuario
+        User user = new User(username, request.email(),
+                passwordEncoder.encode(request.password()), Role.OPERATOR);
         User saved = userRepository.save(user);
+
+        // 4. Generar tokens
         String accessToken = jwtService.generateToken(saved);
         String refreshToken = jwtService.generateToken(saved, refreshExpiration);
 
-        return new LoginResponse(accessToken, refreshToken, saved.getRole().name(), saved.getUsername(), saved.getCreatedAt());
+        // 5. Construir respuesta con email + username
+        return new LoginResponse(accessToken, refreshToken,
+                saved.getRole().name(), saved.getEmail(),
+                saved.getRawUsername(), saved.getCreatedAt());
     }
 
+    /**
+     * Autentica un usuario por email+password.
+     * <p>
+     * WHAT: Delega la autenticación a AuthenticationManager (que usa
+     * CustomUserDetailsService.loadUserByUsername → findByEmail).
+     * Luego busca al usuario por email para construir la respuesta.
+     * WHY: Spring Security maneja la validación de credenciales; nosotros
+     * solo necesitamos el User para devolver role, email, username y createdAt.
+     *
+     * @param request DTO con email y password
+     * @return LoginResponse con tokens, email, username, role y createdAt
+     */
     public LoginResponse login(LoginRequest request) {
+        // 1. Autenticar — AuthenticationManager usa CustomUserDetailsService internamente
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.username(), request.password())
+                new UsernamePasswordAuthenticationToken(request.email(), request.password())
         );
 
-        User user = userRepository.findByUsername(request.username())
+        // 2. Buscar usuario por email para construir la respuesta
+        User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 3. Generar tokens
         String accessToken = jwtService.generateToken(user);
         String refreshToken = jwtService.generateToken(user, refreshExpiration);
 
-        return new LoginResponse(accessToken, refreshToken, user.getRole().name(), user.getUsername(), user.getCreatedAt());
+        // 4. Construir respuesta con email + username
+        return new LoginResponse(accessToken, refreshToken,
+                user.getRole().name(), user.getEmail(),
+                user.getRawUsername(), user.getCreatedAt());
     }
 
     /**
@@ -111,7 +177,6 @@ public class AuthService {
         }
 
         // 3. Validar que el token sea válido para este usuario
-        //    isTokenValid compara username + expiración internamente
         if (!jwtService.isTokenValid(token, userDetails)) {
             throw new InvalidRefreshTokenException(
                     "El refresh token no es válido o ha expirado",
@@ -123,16 +188,50 @@ public class AuthService {
         String newAccessToken = jwtService.generateToken(userDetails);
         String newRefreshToken = jwtService.generateToken(userDetails, refreshExpiration);
 
-        // 5. Construir respuesta — casteamos a User para obtener role y createdAt
-        //    porque CustomUserDetailsService devuelve User (que implementa UserDetails)
+        // 5. Construir respuesta con email + username
         User user = (User) userDetails;
 
         return new LoginResponse(
                 newAccessToken,
                 newRefreshToken,
                 user.getRole().name(),
-                user.getUsername(),
+                user.getEmail(),
+                user.getRawUsername(),
                 user.getCreatedAt()
         );
+    }
+
+    /**
+     * Genera un username único a partir del prefijo del email.
+     * <p>
+     * WHAT: Extrae la parte antes del '@' del email. Si ese username no existe,
+     * lo usa directamente. Si existe (colisión), agrega un sufijo aleatorio
+     * de 4 caracteres alfanuméricos (ej: "juan-4xk9") y reintenta hasta 10 veces.
+     * WHY: El username es necesario para display/admin pero el usuario solo
+     * provee email. La generación automática evita fricción en el registro.
+     *
+     * @param email Email del cual extraer el prefijo
+     * @return Username único garantizado (no existe en la DB)
+     * @throws RuntimeException si no se pudo generar un username único en 10 intentos
+     */
+    private String generateUniqueUsername(String email) {
+        String prefix = email.substring(0, email.indexOf('@'));
+
+        if (!userRepository.existsByUsername(prefix)) {
+            return prefix;
+        }
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String suffix = ThreadLocalRandom.current()
+                    .ints(4, 0, SUFFIX_ALPHABET.length())
+                    .mapToObj(i -> String.valueOf(SUFFIX_ALPHABET.charAt(i)))
+                    .collect(Collectors.joining());
+            String candidate = prefix + "-" + suffix;
+            if (!userRepository.existsByUsername(candidate)) {
+                return candidate;
+            }
+        }
+
+        throw new RuntimeException("Could not generate unique username after 10 attempts");
     }
 }

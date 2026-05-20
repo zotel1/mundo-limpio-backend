@@ -6,30 +6,19 @@ import org.springframework.stereotype.Component;
 
 /**
  * Mapper para convertir entre entidades User y DTOs.
- *
- * QUÉ HACE: Centraliza la conversión de User (entidad JPA) a
- * UserResponse (DTO de respuesta). Convierte el enum Role a String
- * para la capa de presentación.
- *
- * POR QUÉ: Separar la lógica de conversión del servicio mantiene cada
- * clase con una única responsabilidad. El servicio se enfoca en reglas
- * de negocio, el mapper se enfoca en transformación de datos.
- *
- * DIFERENCIA con InventoryMapper:
- *   - InventoryMapper usa inventory.getProduct().getId() para obtener
- *     el productId desde la relación @ManyToOne.
- *   - UserMapper usa directamente user.getId(), user.getUsername(),
- *     user.getRole().name() (convierte enum a String).
- *   - Ambos son @Component (no MapStruct) para mantener consistencia
- *     con el patrón existente del proyecto.
- *   - Ambos tienen un único método toResponse() por ahora.
+ * <p>
+ * WHAT: Ahora mapea user.getEmail() y user.getRawUsername() al UserResponse.
+ * WHY: getUsername() devuelve email (contrato de Spring Security); necesitamos
+ * getRawUsername() para el display name y getEmail() para el campo email explícito.
+ * DIFFERENCES: Antes usaba user.getUsername() tanto para email como para username
+ * (porque getUsername() antes devolvía el username). Ahora separa ambos accesos.
  */
 @Component
 public class UserMapper {
 
     /**
      * Convierte una entidad User a un DTO UserResponse.
-     * Convierte el enum Role a su representación String.
+     * Usa getRawUsername() para el display name y getEmail() para el email.
      *
      * @param user La entidad User desde la base de datos
      * @return UserResponse listo para enviar al cliente (sin contraseña)
@@ -37,7 +26,8 @@ public class UserMapper {
     public UserResponse toResponse(User user) {
         return new UserResponse(
                 user.getId(),
-                user.getUsername(),
+                user.getRawUsername(),
+                user.getEmail(),
                 user.getRole().name(),
                 user.getCreatedAt()
         );

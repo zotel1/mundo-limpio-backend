@@ -66,15 +66,15 @@ class UserManagementServiceTest {
     void setUp() {
         // Creamos User reales (no mocks) porque el servicio los modifica
         // (setRole, setPassword) y necesita objetos concretos.
-        userAdmin = new User("admin", "encoded-password", Role.ADMIN);
+        userAdmin = new User("admin", "admin@mundolimpio.com", "encoded-password", Role.ADMIN);
         userAdmin.setId(1L);
 
-        userOperator = new User("operator", "encoded-password", Role.OPERATOR);
+        userOperator = new User("operator", "operator@mundolimpio.com", "encoded-password", Role.OPERATOR);
         userOperator.setId(2L);
 
         // Creamos UserResponse esperados para verify
-        userAdminResponse = new UserResponse(1L, "admin", "ADMIN", userAdmin.getCreatedAt());
-        userOperatorResponse = new UserResponse(2L, "operator", "OPERATOR", userOperator.getCreatedAt());
+        userAdminResponse = new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", userAdmin.getCreatedAt());
+        userOperatorResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", userOperator.getCreatedAt());
     }
 
     // ==================== FIND ALL TESTS ====================
@@ -221,7 +221,7 @@ class UserManagementServiceTest {
         when(userRepository.findById(targetId)).thenReturn(Optional.of(userOperator));
         when(userRepository.save(userOperator)).thenReturn(userOperator);
         when(userMapper.toResponse(userOperator)).thenReturn(
-                new UserResponse(2L, "operator", "ADMIN", userOperator.getCreatedAt())
+                new UserResponse(2L, "operator", "operator@mundolimpio.com", "ADMIN", userOperator.getCreatedAt())
         );
 
         // When: cambiamos el rol
