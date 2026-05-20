@@ -1,0 +1,41 @@
+# ============================================================
+# GitHub Action — Trigger Render Deploy Hook
+# ============================================================
+# WHAT: Dispara un deploy en Render via POST al Deploy Hook
+#       cuando hay un push a la rama main.
+#
+# WHY: autoDeploy:false en render.yaml evita el doble-deploy.
+#      Este action es el UNICO trigger de deploy a produccion.
+#      El Deploy Hook URL se almacena como GitHub secret para
+#      no exponerlo en el codigo.
+#
+# HOW: curl -X POST al webhook de Render. Render responde 200/201
+#      si el deploy se encolo correctamente. Timeout de 30s para
+#      evitar que el action quede colgado. Si falla, se puede
+#      re-ejecutar manualmente via workflow_dispatch.
+#
+# DIFFERENCES: Reemplaza fly-deploy.yml (Fly.io, nunca usado).
+# ============================================================
+
+name: Render Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook
+        run: |
+          STATUS=$(curl -s -o /tmp/render-response.txt -w "%{http_code}" \
+            --max-time 30 \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}")
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
+            echo "Deploy triggered (HTTP $STATUS)"
+          else
+            echo "Deploy hook failed (HTTP $STATUS)"
+            cat /tmp/render-response.txt
+            exit 1
+          fi

@@ -1,0 +1,54 @@
+# ============================================================
+# Render Blueprint — MundoLimpio Backend
+# ============================================================
+# WHAT: Define el servicio web de MundoLimpio en Render usando
+#       el Dockerfile existente para builds multi-stage (Maven + JRE).
+#
+# WHY: Reemplaza la pipeline de GCP Cloud Run (cloudbuild.yaml +
+#      service.yaml) que nunca se activo completamente. Render es mas
+#      simple: Dockerfile + health check + env vars = deploy listo.
+#
+# DIFFERENCES con GCP Cloud Run:
+#   - No necesita Artifact Registry (Render construye la imagen)
+#   - autoDeploy:false porque el GitHub Action (render-deploy.yml)
+#     dispara el deploy via Deploy Hook en push a main. Esto evita
+#     doble-deploy si Render tambien tiene GitHub integration.
+#   - Health check via /actuator/health/liveness (Spring Boot Actuator)
+#     en lugar de las Google Cloud health probes nativas.
+#   - Env vars con sync:false = Render no las sobreescribe en updates
+#     del blueprint. El usuario las configura UNA VEZ en el dashboard.
+# ============================================================
+
+services:
+  - type: web
+    name: mundolimpio-api
+    runtime: docker
+    plan: starter
+    region: ohio
+    branch: main
+    healthCheckPath: /actuator/health/liveness
+    autoDeploy: false
+
+    # WHAT: Flyway corre en el startup de la JVM (spring.flyway.enabled=true
+    #       en application-prod.yml). No se necesita pre-deploy command.
+    # WHY: El Dockerfile ya tiene las migraciones en el classpath.
+    #       Flyway las ejecuta via Spring Boot auto-configuration.
+    preDeployCommand: ""
+
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: PGHOST
+        sync: false
+      - key: PGPORT
+        value: "6543"
+      - key: PGDATABASE
+        value: postgres
+      - key: PGUSER
+        sync: false
+      - key: PGPASSWORD
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: APPLICATION_CORS_ALLOWED_ORIGINS
+        sync: false

@@ -41,3 +41,15 @@ spring:
 
   flyway:
     enabled: true
+    # WHAT: baseline-on-migrate=true permite que Flyway no falle al encontrar
+    #       una DB de Supabase que ya tiene V1-V5 aplicadas en flyway_schema_history.
+    #       Flyway baselines automaticamente y solo aplica las migraciones pendientes.
+    # WHY: Sin esto, el primer deploy a Render fallaria porque Flyway encuentra
+    #      una DB no vacia sin su propia tabla de historial.
+    # DIFFERENCES: Solo aplica en prod. En dev/test, Flyway usa clean+create
+    #              desde cero con una DB vacia.
+    baseline-on-migrate: true
+    # WHAT: baseline-version=5 le dice a Flyway que todo hasta V5 inclusive ya existe.
+    # WHY: Supabase ya tiene V1-V5 aplicadas. V6 (email support) y V7 son las
+    #      unicas que necesitan ejecutarse en el primer deploy a Render.
+    baseline-version: 5
