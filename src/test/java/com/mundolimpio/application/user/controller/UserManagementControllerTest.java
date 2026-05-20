@@ -88,8 +88,8 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     void findAll_AsAdmin_Returns200WithUserList() throws Exception {
         // Given: el servicio retorna una lista con 2 usuarios
         List<UserResponse> mockUsers = List.of(
-                new UserResponse(1L, "admin", "ADMIN", Instant.now()),
-                new UserResponse(2L, "operator", "OPERATOR", Instant.now())
+                new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", Instant.now()),
+                new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", Instant.now())
         );
 
         when(userManagementService.findAll()).thenReturn(mockUsers);
@@ -101,9 +101,11 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id").value(1))
                 .andExpect(jsonPath("$[0].username").value("admin"))
+                .andExpect(jsonPath("$[0].email").value("admin@mundolimpio.com"))
                 .andExpect(jsonPath("$[0].role").value("ADMIN"))
                 .andExpect(jsonPath("$[1].id").value(2))
                 .andExpect(jsonPath("$[1].username").value("operator"))
+                .andExpect(jsonPath("$[1].email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$[1].role").value("OPERATOR"));
     }
 
@@ -154,7 +156,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void findById_WhenExists_Returns200() throws Exception {
         // Given: el servicio retorna un usuario existente
-        UserResponse mockUser = new UserResponse(2L, "operator", "OPERATOR", Instant.now());
+        UserResponse mockUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", Instant.now());
 
         when(userManagementService.findById(2L)).thenReturn(mockUser);
 
@@ -164,6 +166,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
                 .andExpect(jsonPath("$.username").value("operator"))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.role").value("OPERATOR"));
     }
 
@@ -203,7 +206,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void changeRole_ValidRequest_Returns200() throws Exception {
         // Given: el servicio retorna el usuario con rol actualizado
-        UserResponse updatedUser = new UserResponse(2L, "operator", "ADMIN", Instant.now());
+        UserResponse updatedUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "ADMIN", Instant.now());
 
         when(userManagementService.changeRole(eq(2L), eq("ADMIN"), any()))
                 .thenReturn(updatedUser);
@@ -215,6 +218,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.role").value("ADMIN"));
     }
 
@@ -266,7 +270,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void changeRole_SelfDemotion_Returns400() throws Exception {
         // Given: un ADMIN autenticado con ID=1 (usando User de dominio real)
-        User adminUser = new User("admin", "pass", Role.ADMIN);
+        User adminUser = new User("admin", "admin@mundolimpio.com", "pass", Role.ADMIN);
         adminUser.setId(1L);
 
         UsernamePasswordAuthenticationToken authToken =
@@ -324,7 +328,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void resetPassword_ValidRequest_Returns200() throws Exception {
         // Given: el servicio retorna el usuario con contraseña reseteada
-        UserResponse userResponse = new UserResponse(2L, "operator", "OPERATOR", Instant.now());
+        UserResponse userResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", Instant.now());
 
         when(userManagementService.resetPassword(eq(2L), eq("NewPass123")))
                 .thenReturn(userResponse);
@@ -336,6 +340,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.username").value("operator"));
     }
 

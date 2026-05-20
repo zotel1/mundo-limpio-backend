@@ -71,7 +71,7 @@ class AuthRefreshIT extends AbstractIntegrationTest {
     @Test
     void shouldRefreshTokenSuccessfully() {
         // ========== 1. Registrar un usuario ==========
-        RegisterRequest registerReq = new RegisterRequest("testuser", "password123");
+        RegisterRequest registerReq = new RegisterRequest("testuser@mundolimpio.com", "password123");
 
         ResponseEntity<LoginResponse> registerRes = restTemplate.postForEntity(
                 "/api/v1/auth/register",
@@ -93,8 +93,11 @@ class AuthRefreshIT extends AbstractIntegrationTest {
                 .as("El refresh token del registro no debe ser nulo")
                 .isNotNull();
         assertThat(registerRes.getBody().username())
-                .as("El username del registro debe coincidir")
+                .as("El username del registro debe ser el prefijo auto-generado")
                 .isEqualTo("testuser");
+        assertThat(registerRes.getBody().email())
+                .as("El email del registro debe coincidir")
+                .isEqualTo("testuser@mundolimpio.com");
         assertThat(registerRes.getBody().role())
                 .as("El role del registro debe ser OPERATOR")
                 .isEqualTo("OPERATOR");
@@ -134,6 +137,9 @@ class AuthRefreshIT extends AbstractIntegrationTest {
         assertThat(refreshRes.getBody().username())
                 .as("El username debe coincidir con el usuario registrado")
                 .isEqualTo("testuser");
+        assertThat(refreshRes.getBody().email())
+                .as("El email debe coincidir con el usuario registrado")
+                .isEqualTo("testuser@mundolimpio.com");
         assertThat(refreshRes.getBody().role())
                 .as("El role debe coincidir con el usuario registrado")
                 .isEqualTo("OPERATOR");

@@ -8,25 +8,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 
 /**
  * Manejador de excepciones de autenticación para el módulo user.
  * <p>
- * QUÉ: Captura y maneja InvalidRefreshTokenException, devolviendo
- * una respuesta JSON estandarizada con HTTP 401 (UNAUTHORIZED).
- * POR QUÉ:
- * - El GlobalExceptionHandler tiene un catch-all Exception.class que devuelve 500.
- * - Sin este handler, InvalidRefreshTokenException caería ahí y daría 500 (incorrecto).
- * - Necesitamos 401 específicamente para refresh tokens inválidos.
- * CÓMO:
- * - @ControllerAdvice(basePackages = ...) limita el alcance al módulo user.
- * - @Order(Ordered.HIGHEST_PRECEDENCE) asegura que este handler se evalúe
- *   ANTES que el GlobalExceptionHandler (que no tiene @Order y por tanto
- *   tiene la precedencia más baja por defecto).
- * - Usamos ErrorResponse record (el mismo DTO que el GlobalExceptionHandler)
- *   para mantener consistencia en las respuestas de error de la API.
+ * WHAT: Captura InvalidRefreshTokenException (401 UNAUTHORIZED) y
+ * ResponseStatusException con status 409 (CONFLICT, email duplicado).
+ * WHY: Sin este handler, estas excepciones caerían en el catch-all
+ * de GlobalExceptionHandler que devuelve 500.
+ * <p>
+ * DIFFERENCES: Antes solo manejaba InvalidRefreshTokenException.
+ * Ahora también maneja ResponseStatusException(409) para email duplicado.
  */
 @ControllerAdvice(basePackages = "com.mundolimpio.application.user")
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -34,17 +29,6 @@ public class AuthExceptionHandler {
 
     /**
      * Maneja InvalidRefreshTokenException y retorna 401 UNAUTHORIZED.
-     * <p>
-     * QUÉ: Convierte la excepción en un ErrorResponse con código
-     * "INVALID_REFRESH_TOKEN" y el mensaje descriptivo del error.
-     * POR QUÉ: El cliente necesita saber que debe redirigir al login
-     * cuando el refresh token no es válido.
-     * CÓMO: Extraemos el mensaje de la excepción y el path del request
-     * para construir un ErrorResponse completo.
-     *
-     * @param ex      Excepción lanzada cuando el refresh token no es válido
-     * @param request Request HTTP actual (para obtener el path)
-     * @return ResponseEntity con ErrorResponse y HTTP 401
      */
     @ExceptionHandler(InvalidRefreshTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRefreshToken(
@@ -58,5 +42,37 @@ public class AuthExceptionHandler {
                 request.getDescription(false).replace("uri=", "")
         );
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+    }
+
+    /**
+     * Maneja ResponseStatusException con status 409 (CONFLICT) para email duplicado.
+     * <p>
+     * WHAT: Convierte ResponseStatusException(409) en un ErrorResponse con código
+     * "EMAIL_ALREADY_IN_USE" y HTTP 409.
+     * WHY: AuthService.register() lanza ResponseStatusException(HttpStatus.CONFLICT, ...)
+     * cuando el email ya existe. Este handler intercepta esa excepción antes de que
+     * llegue al catch-all del GlobalExceptionHandler.
+     *
+     * @param ex      ResponseStatusException lanzada por AuthService.register()
+     * @param request Request HTTP actual (para obtener el path)
+     * @return ResponseEntity con ErrorResponse y HTTP 409
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateEmail(
+            ResponseStatusException ex,
+            WebRequest request
+    ) {
+        // Solo manejamos 409 CONFLICT (email duplicado). Otros status los dejamos pasar.
+        if (ex.getStatusCode() != HttpStatus.CONFLICT) {
+            throw ex;
+        }
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                "EMAIL_ALREADY_IN_USE",
+                ex.getReason(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
 }
