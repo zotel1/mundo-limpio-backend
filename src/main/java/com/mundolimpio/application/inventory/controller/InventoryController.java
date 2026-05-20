@@ -18,7 +18,9 @@ import java.util.List;
  * Controlador REST para el módulo de inventario.
  *
  * QUE HACE: Expone endpoints para consultar y modificar el stock
- * de productos. Todos los endpoints requieren rol ADMIN.
+ * de productos. Endpoints de lectura accesibles por 5 roles
+ * (ADMIN, STOCK_MANAGER, STOCK_OPERATOR, SALES_CLERK, PRODUCTION_OP).
+ * Ajuste de stock limitado a ADMIN y STOCK_MANAGER.
  *
  * POR QUE seguimos el patrón de SaleController:
  *   - @PreAuthorize("hasRole('ADMIN')") en cada método (no a nivel
@@ -38,7 +40,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/v1/inventory")
-@Tag(name = "Inventory", description = "Endpoints para gestión de inventario (ADMIN only)")
+@Tag(name = "Inventory", description = "Endpoints para gestión de inventario (multi-rol: ADMIN, STOCK_MANAGER, STOCK_OPERATOR, SALES_CLERK, PRODUCTION_OP)")
 public class InventoryController {
 
     private final InventoryService inventoryService;
@@ -68,11 +70,14 @@ public class InventoryController {
      * @return 200 OK con InventoryResponse, o 404 si no existe
      */
     @GetMapping("/{productId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'STOCK_OPERATOR', 'SALES_CLERK', 'PRODUCTION_OP')")
+    // WHAT: Lectura de stock ampliada a 5 roles
+    // WHY: STOCK_MANAGER/STOCK_OPERATOR gestionan inventario; SALES_CLERK consulta disponibilidad;
+    //      PRODUCTION_OP necesita ver stock antes de producir
     @Operation(
             summary = "Get inventory by product ID",
             description = "Returns the current stock and minimum threshold for a product. " +
-                    "Only ADMIN can access."
+                    "Accessible by ADMIN, STOCK_MANAGER, STOCK_OPERATOR, SALES_CLERK, and PRODUCTION_OP."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Inventory found"),
@@ -100,11 +105,12 @@ public class InventoryController {
      * @return 200 OK con lista (puede ser vacía)
      */
     @GetMapping("/low-stock")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'STOCK_OPERATOR', 'SALES_CLERK', 'PRODUCTION_OP')")
+    // WHAT: Consulta de bajo stock ampliada a 5 roles (mismos que GET /{productId})
     @Operation(
             summary = "Get low stock inventories",
             description = "Returns all products where current stock is below the minimum threshold. " +
-                    "Only ADMIN can access."
+                    "Accessible by ADMIN, STOCK_MANAGER, STOCK_OPERATOR, SALES_CLERK, and PRODUCTION_OP."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "List of low-stock inventories (may be empty)"),
@@ -145,12 +151,14 @@ public class InventoryController {
      * @return 200 OK con InventoryResponse actualizado
      */
     @PostMapping("/{productId}/adjust")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: Ajuste de stock limitado a ADMIN y STOCK_MANAGER
+    // WHY: Solo roles con responsabilidad de gestion de inventario pueden modificar stock
     @Operation(
             summary = "Adjust stock manually",
             description = "Manually adjusts the stock of a product with an audit trail. " +
                     "Quantity uses sign convention: positive = increase, negative = decrease. " +
-                    "Only ADMIN can access."
+                    "Only ADMIN and STOCK_MANAGER can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Stock adjusted successfully"),

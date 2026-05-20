@@ -23,7 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 /**
  * WHAT: Controlador REST para el módulo de tickets de compra (receipts).
  * WHY: Expone los endpoints del flujo de procesamiento OCR de tickets.
- *      Solo accesible por usuarios con rol ADMIN.
+ *      Accesible por ADMIN, STOCK_MANAGER y STOCK_OPERATOR.
  * 
  * ENDPOINTS:
  * POST /api/v1/receipts/process — Sube imagen del ticket y la procesa con OCR
@@ -35,7 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @RestController
 @RequestMapping("/api/v1/receipts")
-@Tag(name = "Receipts", description = "Endpoints para procesamiento OCR de tickets de compra (ADMIN only)")
+@Tag(name = "Receipts", description = "Endpoints para procesamiento OCR de tickets de compra (ADMIN, STOCK_MANAGER, STOCK_OPERATOR)")
 public class ReceiptController {
 
     private final ReceiptProcessingService processingService;
@@ -70,10 +70,12 @@ public class ReceiptController {
      * @throws OcrProcessingException → 422 Unprocessable Entity (manejado por ReceiptExceptionHandler)
      */
     @PostMapping(value = "/process", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'STOCK_OPERATOR')")
+    // WHAT: Procesamiento OCR de tickets ampliado a roles de almacen
+    // WHY: STOCK_MANAGER y STOCK_OPERATOR reciben mercancia y escanean tickets
     @Operation(
             summary = "Process receipt image with OCR",
-            description = "Uploads a receipt photo, stores it in Supabase, and extracts product data via Tesseract OCR. Only ADMIN can access."
+            description = "Uploads a receipt photo, stores it in Supabase, and extracts product data via Tesseract OCR. ADMIN, STOCK_MANAGER, and STOCK_OPERATOR can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "OCR processing successful — product data extracted"),
@@ -126,10 +128,12 @@ public class ReceiptController {
      * @return 201 CREATED con PurchaseResponse (compra persistida)
      */
     @PostMapping("/confirm")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: Confirmacion de compra ampliada a STOCK_MANAGER
+    // WHY: STOCK_MANAGER revisa y confirma las compras recibidas
     @Operation(
             summary = "Confirm receipt and persist purchase",
-            description = "Receives reviewed OCR data, persists Purchase with items, creates Supplier if needed, and updates stock. Only ADMIN can access."
+            description = "Receives reviewed OCR data, persists Purchase with items, creates Supplier if needed, and updates stock. ADMIN and STOCK_MANAGER can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Purchase confirmed and persisted successfully"),
