@@ -73,8 +73,9 @@ class UserManagementServiceTest {
         userOperator.setId(2L);
 
         // Creamos UserResponse esperados para verify
-        userAdminResponse = new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", userAdmin.getCreatedAt());
-        userOperatorResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", userOperator.getCreatedAt());
+        // WHAT: Agregamos List<String> roles (6to parametro) requerido por el nuevo UserResponse multi-rol
+        userAdminResponse = new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", userAdmin.getCreatedAt(), List.of("ADMIN"));
+        userOperatorResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", userOperator.getCreatedAt(), List.of("SALES_CLERK"));
     }
 
     // ==================== FIND ALL TESTS ====================
@@ -108,7 +109,7 @@ class UserManagementServiceTest {
         assertEquals(2L, result.get(1).id());
         assertEquals("operator", result.get(1).username());
         assertEquals("operator@mundolimpio.com", result.get(1).email());
-        assertEquals("OPERATOR", result.get(1).role());
+        assertEquals("SALES_CLERK", result.get(1).role());
 
         verify(userRepository).findAll();
         verify(userMapper).toResponse(userAdmin);
@@ -224,7 +225,7 @@ class UserManagementServiceTest {
         when(userRepository.findById(targetId)).thenReturn(Optional.of(userOperator));
         when(userRepository.save(userOperator)).thenReturn(userOperator);
         when(userMapper.toResponse(userOperator)).thenReturn(
-                new UserResponse(2L, "operator", "operator@mundolimpio.com", "ADMIN", userOperator.getCreatedAt())
+                new UserResponse(2L, "operator", "operator@mundolimpio.com", "ADMIN", userOperator.getCreatedAt(), List.of("ADMIN"))
         );
 
         // When: cambiamos el rol

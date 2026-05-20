@@ -88,8 +88,8 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     void findAll_AsAdmin_Returns200WithUserList() throws Exception {
         // Given: el servicio retorna una lista con 2 usuarios
         List<UserResponse> mockUsers = List.of(
-                new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", Instant.now()),
-                new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", Instant.now())
+                new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", Instant.now(), List.of("ADMIN")),
+                new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"))
         );
 
         when(userManagementService.findAll()).thenReturn(mockUsers);
@@ -106,7 +106,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[1].id").value(2))
                 .andExpect(jsonPath("$[1].username").value("operator"))
                 .andExpect(jsonPath("$[1].email").value("operator@mundolimpio.com"))
-                .andExpect(jsonPath("$[1].role").value("OPERATOR"));
+                .andExpect(jsonPath("$[1].role").value("SALES_CLERK"));
     }
 
     /**
@@ -122,7 +122,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
      * - @WithMockUser(roles = "OPERATOR") simula un usuario autenticado sin ADMIN.
      */
     @Test
-    @WithMockUser(roles = "OPERATOR")
+    @WithMockUser(roles = "SALES_CLERK")
     void findAll_AsOperator_Returns403() throws Exception {
         mockMvc.perform(get("/api/v1/users"))
                 .andExpect(status().isForbidden())
@@ -156,7 +156,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void findById_WhenExists_Returns200() throws Exception {
         // Given: el servicio retorna un usuario existente
-        UserResponse mockUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", Instant.now());
+        UserResponse mockUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"));
 
         when(userManagementService.findById(2L)).thenReturn(mockUser);
 
@@ -167,7 +167,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.id").value(2))
                 .andExpect(jsonPath("$.username").value("operator"))
                 .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
-                .andExpect(jsonPath("$.role").value("OPERATOR"));
+                .andExpect(jsonPath("$.role").value("SALES_CLERK"));
     }
 
     /**
@@ -206,7 +206,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void changeRole_ValidRequest_Returns200() throws Exception {
         // Given: el servicio retorna el usuario con rol actualizado
-        UserResponse updatedUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "ADMIN", Instant.now());
+        UserResponse updatedUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "ADMIN", Instant.now(), List.of("ADMIN"));
 
         when(userManagementService.changeRole(eq(2L), eq("ADMIN"), any()))
                 .thenReturn(updatedUser);
@@ -328,7 +328,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void resetPassword_ValidRequest_Returns200() throws Exception {
         // Given: el servicio retorna el usuario con contraseña reseteada
-        UserResponse userResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "OPERATOR", Instant.now());
+        UserResponse userResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"));
 
         when(userManagementService.resetPassword(eq(2L), eq("NewPass123")))
                 .thenReturn(userResponse);
