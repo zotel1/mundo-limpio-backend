@@ -103,9 +103,11 @@ class UserManagementServiceTest {
         assertEquals(2, result.size(), "Debe haber 2 usuarios");
         assertEquals(1L, result.get(0).id());
         assertEquals("admin", result.get(0).username());
+        assertEquals("admin@mundolimpio.com", result.get(0).email());
         assertEquals("ADMIN", result.get(0).role());
         assertEquals(2L, result.get(1).id());
         assertEquals("operator", result.get(1).username());
+        assertEquals("operator@mundolimpio.com", result.get(1).email());
         assertEquals("OPERATOR", result.get(1).role());
 
         verify(userRepository).findAll();
@@ -162,6 +164,7 @@ class UserManagementServiceTest {
         assertNotNull(result);
         assertEquals(1L, result.id());
         assertEquals("admin", result.username());
+        assertEquals("admin@mundolimpio.com", result.email());
         assertEquals("ADMIN", result.role());
         assertNotNull(result.createdAt());
 
@@ -230,6 +233,7 @@ class UserManagementServiceTest {
         // Then: el rol debe ser ADMIN
         assertNotNull(result);
         assertEquals("ADMIN", result.role(), "El rol debe haber cambiado a ADMIN");
+        assertEquals("operator@mundolimpio.com", result.email(), "El email debe estar presente");
         assertEquals(Role.ADMIN, userOperator.getRole(), "La entidad debe tener el nuevo rol ADMIN");
 
         verify(userRepository).findById(targetId);
@@ -353,6 +357,8 @@ class UserManagementServiceTest {
         // Then: la contraseña debe estar encriptada y el usuario guardado
         assertNotNull(result);
         assertEquals(2L, result.id());
+        assertEquals("operator@mundolimpio.com", result.email(),
+                "El email debe estar presente en la respuesta");
         assertEquals(encodedPassword, userOperator.getPassword(),
                 "La contraseña debe estar encriptada con BCrypt");
 

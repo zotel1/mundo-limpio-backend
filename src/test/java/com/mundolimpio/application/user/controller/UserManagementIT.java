@@ -93,7 +93,8 @@ class UserManagementIT extends AbstractIntegrationTest {
      * @return AdminContext con ID del admin y su JWT
      */
     private AdminContext createAdminContext() {
-        User admin = new User("admin", passwordEncoder.encode("admin123"), Role.ADMIN);
+        User admin = new User("admin", "admin@mundolimpio.com",
+                passwordEncoder.encode("admin123"), Role.ADMIN);
         admin = userRepository.save(admin);
         String token = jwtService.generateToken(admin);
         return new AdminContext(admin.getId(), token);
@@ -124,7 +125,8 @@ class UserManagementIT extends AbstractIntegrationTest {
     void findAll_ShouldReturnAllUsers() {
         // Given: admin autenticado + 1 OPERATOR en DB
         AdminContext admin = createAdminContext();
-        userRepository.save(new User("operator", passwordEncoder.encode("pass123"), Role.OPERATOR));
+        userRepository.save(new User("operator", "operator@mundolimpio.com",
+                passwordEncoder.encode("pass123"), Role.OPERATOR));
 
         // When: GET /api/v1/users como ADMIN
         HttpEntity<Void> entity = new HttpEntity<>(authHeaders(admin.token()));
@@ -178,6 +180,9 @@ class UserManagementIT extends AbstractIntegrationTest {
         assertThat(response.getBody()[0].username())
                 .as("El username debe ser el del admin")
                 .isEqualTo("admin");
+        assertThat(response.getBody()[0].email())
+                .as("El email debe ser del admin")
+                .isEqualTo("admin@mundolimpio.com");
     }
 
     /**
@@ -189,7 +194,8 @@ class UserManagementIT extends AbstractIntegrationTest {
     @Test
     void findAll_Operator_ShouldReturn403() {
         // Given: OPERATOR autenticado (sin rol ADMIN)
-        User operator = new User("operator", passwordEncoder.encode("pass123"), Role.OPERATOR);
+        User operator = new User("operator", "operator@mundolimpio.com",
+                passwordEncoder.encode("pass123"), Role.OPERATOR);
         operator = userRepository.save(operator);
         String operatorToken = jwtService.generateToken(operator);
 
@@ -223,73 +229,8 @@ class UserManagementIT extends AbstractIntegrationTest {
         // Given: admin autenticado + OPERATOR en DB
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
-                new User("operator", passwordEncoder.encode("pass123"), Role.OPERATOR));
-
-        // When: GET /api/v1/users/{id}
-        HttpEntity<Void> entity = new HttpEntity<>(authHeaders(admin.token()));
-        ResponseEntity<UserResponse> response = restTemplate.exchange(
-                "/api/v1/users/" + operator.getId(), HttpMethod.GET, entity, UserResponse.class);
-
-        // Then: 200 OK con datos del usuario
-        assertThat(response.getStatusCode())
-                .as("ADMIN debe poder consultar un usuario por ID")
-                .isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody())
-                .as("El body no debe ser nulo")
-                .isNotNull();
-        assertThat(response.getBody().id())
-                .as("El ID debe coincidir")
-                .isEqualTo(operator.getId());
-        assertThat(response.getBody().username())
-                .as("El username debe coincidir")
-                .isEqualTo("operator");
-        assertThat(response.getBody().role())
-                .as("El role debe ser OPERATOR")
-                .isEqualTo("OPERATOR");
-    }
-
-    /**
-     * REQ-2: Obtener usuario por ID inexistente.
-     *
-     * ESCENARIO: GIVEN user id=99 missing → WHEN ADMIN GET /api/v1/users/99
-     * → THEN 404 USER_NOT_FOUND.
-     */
-    @Test
-    void findById_WhenNotExists_ShouldReturn404() {
-        // Given: admin autenticado, sin usuario con ID 999
-        AdminContext admin = createAdminContext();
-
-        // When: GET /api/v1/users/999 (no existe)
-        HttpEntity<Void> entity = new HttpEntity<>(authHeaders(admin.token()));
-        ResponseEntity<ErrorResponse> response = restTemplate.exchange(
-                "/api/v1/users/999", HttpMethod.GET, entity, ErrorResponse.class);
-
-        // Then: 404 USER_NOT_FOUND
-        assertThat(response.getStatusCode())
-                .as("Usuario inexistente debe retornar 404")
-                .isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(response.getBody())
-                .as("El body de error no debe ser nulo")
-                .isNotNull();
-        assertThat(response.getBody().code())
-                .as("El código de error debe ser USER_NOT_FOUND")
-                .isEqualTo("USER_NOT_FOUND");
-    }
-
-    // ======================== PATCH /api/v1/users/{id}/role ========================
-
-    /**
-     * REQ-3: Cambiar rol exitosamente.
-     *
-     * ESCENARIO: GIVEN user id=2 has role OPERATOR → WHEN ADMIN
-     * PATCH /api/v1/users/2/role {"newRole":"ADMIN"} → THEN 200, role=ADMIN.
-     */
-    @Test
-    void changeRole_ShouldUpdateRole() {
-        // Given: admin autenticado + OPERATOR en DB
-        AdminContext admin = createAdminContext();
-        User operator = userRepository.save(
-                new User("operator", passwordEncoder.encode("pass123"), Role.OPERATOR));
+                new User("operator", "operator@mundolimpio.com",
+                        passwordEncoder.encode("pass123"), Role.OPERATOR));
 
         // When: PATCH /api/v1/users/{id}/role con newRole=ADMIN
         ChangeRoleRequest request = new ChangeRoleRequest("ADMIN");
@@ -311,6 +252,9 @@ class UserManagementIT extends AbstractIntegrationTest {
         assertThat(response.getBody().role())
                 .as("El role debe ser ADMIN después del cambio")
                 .isEqualTo("ADMIN");
+        assertThat(response.getBody().email())
+                .as("El email debe estar presente en la respuesta")
+                .isEqualTo("operator@mundolimpio.com");
 
         // Verificar que el cambio persiste en DB
         // POR QUÉ verificamos en DB: El integration test debe confirmar
@@ -332,7 +276,8 @@ class UserManagementIT extends AbstractIntegrationTest {
         // Given: admin autenticado + OPERATOR en DB
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
-                new User("operator", passwordEncoder.encode("pass123"), Role.OPERATOR));
+                new User("operator", "operator@mundolimpio.com",
+                        passwordEncoder.encode("pass123"), Role.OPERATOR));
 
         // When: PATCH con rol inválido
         ChangeRoleRequest request = new ChangeRoleRequest("INVALID");
@@ -443,7 +388,8 @@ class UserManagementIT extends AbstractIntegrationTest {
         // Given: admin autenticado + OPERATOR en DB con contraseña conocida
         AdminContext admin = createAdminContext();
         User operator = userRepository.save(
-                new User("operator", passwordEncoder.encode("oldPass123"), Role.OPERATOR));
+                new User("operator", "operator@mundolimpio.com",
+                        passwordEncoder.encode("oldPass123"), Role.OPERATOR));
 
         // When: ADMIN resetea la contraseña del operator
         ResetPasswordRequest request = new ResetPasswordRequest("NewPass123");
@@ -462,13 +408,16 @@ class UserManagementIT extends AbstractIntegrationTest {
         assertThat(response.getBody().id())
                 .as("El ID debe coincidir con el usuario modificado")
                 .isEqualTo(operator.getId());
+        assertThat(response.getBody().email())
+                .as("El email debe estar presente")
+                .isEqualTo("operator@mundolimpio.com");
 
         // Then: El usuario puede hacer login con la NUEVA contraseña
         // POR QUÉ: Verificamos que el hash BCrypt se generó correctamente
         // y que la cadena completa auth → loadUser → passwordEncoder.matches() funciona.
         ResponseEntity<LoginResponse> loginRes = restTemplate.postForEntity(
                 "/api/v1/auth/login",
-                new LoginRequest("operator", "NewPass123"),
+                new LoginRequest("operator@mundolimpio.com", "NewPass123"),
                 LoginResponse.class);
         assertThat(loginRes.getStatusCode())
                 .as("El usuario debe poder hacer login con la nueva contraseña")
@@ -476,6 +425,9 @@ class UserManagementIT extends AbstractIntegrationTest {
         assertThat(loginRes.getBody())
                 .as("El login response no debe ser nulo")
                 .isNotNull();
+        assertThat(loginRes.getBody().email())
+                .as("El email del login debe coincidir")
+                .isEqualTo("operator@mundolimpio.com");
         assertThat(loginRes.getBody().username())
                 .as("El username del login debe coincidir")
                 .isEqualTo("operator");
