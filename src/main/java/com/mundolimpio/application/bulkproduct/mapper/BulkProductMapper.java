@@ -19,13 +19,15 @@ public class BulkProductMapper {
      * */
 
     public BulkProduct toEntity(BulkProductRequest request) {
-        return new BulkProduct(
+        BulkProduct entity = new BulkProduct(
                 null,
                 request.name(),
                 request.currentStockLiters(),
                 request.costperLiter(),
                 request.conversionRatio()
         );
+        entity.setActive(true); // Por defecto, la materia prima se crea activa
+        return entity;
     }
 
     /**
@@ -57,7 +59,8 @@ public class BulkProductMapper {
                 entity.getName(),
                 entity.getCurrentStockLiters(),
                 entity.getCostPerLiter(),
-                entity.getConversionRatio()
+                entity.getConversionRatio(),
+                entity.getActive()
         );
     }
 
