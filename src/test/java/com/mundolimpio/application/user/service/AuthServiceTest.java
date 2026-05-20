@@ -75,7 +75,7 @@ class AuthServiceTest {
     void setUp() {
         // Creamos un User real (no mock) porque refresh() castea UserDetails a User
         // para obtener getRole() y getCreatedAt(). Un mock de UserDetails no funcionaría.
-        testUser = new User("testuser", "encoded-password", Role.OPERATOR);
+        testUser = new User("testuser", "testuser@mundolimpio.com", "encoded-password", Role.OPERATOR);
     }
 
     // ==================== TEST 1: Token válido → nuevo par ====================
@@ -112,8 +112,8 @@ class AuthServiceTest {
                 "El refresh token debe ser el nuevo generado");
         assertEquals("OPERATOR", response.role(),
                 "El rol debe coincidir con el del usuario");
-        assertEquals("testuser", response.username(),
-                "El username debe coincidir con el del usuario");
+        assertEquals("testuser@mundolimpio.com", response.username(),
+                "El username debe coincidir con el email del usuario");
         assertNotNull(response.createdAt(),
                 "La fecha de creación no debe ser nula");
 
