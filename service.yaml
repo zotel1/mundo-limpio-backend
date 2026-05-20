@@ -1,3 +1,7 @@
+### DEPRECATED — replaced by Render deploy pipeline (render.yaml)
+### This file was for Google Cloud Run Knative service spec. Kept for reference only.
+### See docs/deployment.md for current Render deployment instructions.
+
 # ============================================================
 # Cloud Run Service Spec (REFERENCIA — no se usa en el pipeline)
 # ============================================================

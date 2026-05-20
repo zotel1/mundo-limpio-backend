@@ -106,6 +106,15 @@ class ProdConfigTest {
     @Value("${spring.datasource.hikari.maximum-pool-size}")
     private int hikariMaxPoolSize;
 
+    @Value("${spring.flyway.enabled}")
+    private boolean flywayEnabled;
+
+    @Value("${spring.flyway.baseline-on-migrate}")
+    private boolean flywayBaselineOnMigrate;
+
+    @Value("${spring.flyway.baseline-version}")
+    private int flywayBaselineVersion;
+
     @Autowired
     private Environment environment;
 
@@ -256,5 +265,92 @@ class ProdConfigTest {
                 .as("application-prod.yml debe definir maximum-pool-size: 5 "
                    + "para respetar los limites del free tier de Supabase")
                 .contains("maximum-pool-size: 5");
+    }
+
+    /**
+     * WHAT: Verifica que Flyway esta habilitado en el perfil prod.
+     *
+     * WHY: Flyway debe ejecutar las migraciones V6 y V7 en el primer
+     *      deploy a Render. Sin flyway.enabled=true, las migraciones
+     *      no se ejecutan y la app falla por schema inconsistente.
+     *
+     * GIVEN: application-prod.yml con spring.flyway.enabled: true
+     * WHEN:  Se lee la propiedad spring.flyway.enabled
+     * THEN:  Es true
+     */
+    @Test
+    void prodProfile_FlywayIsEnabled() {
+        assertThat(flywayEnabled)
+                .as("El perfil prod debe tener Flyway habilitado "
+                   + "para ejecutar migraciones en el primer deploy a Render")
+                .isTrue();
+    }
+
+    /**
+     * WHAT: Verifica que Flyway baselines en migrate en el perfil prod.
+     *
+     * WHY: Supabase ya tiene V1-V5 aplicadas en flyway_schema_history.
+     *      baseline-on-migrate=true permite que Flyway detecte el historial
+     *      existente y aplique solo las migraciones pendientes (V6, V7).
+     *      Sin esto, Flyway fallaria al encontrar una DB no vacia sin
+     *      su propia tabla de historial.
+     *
+     * GIVEN: application-prod.yml con spring.flyway.baseline-on-migrate: true
+     * WHEN:  Se lee la propiedad spring.flyway.baseline-on-migrate
+     * THEN:  Es true
+     */
+    @Test
+    void prodProfile_FlywayBaselineOnMigrateIsEnabled() {
+        assertThat(flywayBaselineOnMigrate)
+                .as("El perfil prod debe tener baseline-on-migrate=true "
+                   + "para que Flyway no falle al encontrar migraciones V1-V5 "
+                   + "ya aplicadas en Supabase")
+                .isTrue();
+    }
+
+    /**
+     * WHAT: Verifica que Flyway baselines en V5 en el perfil prod.
+     *
+     * WHY: Las migraciones V1 a V5 ya estan aplicadas en Supabase.
+     *      baseline-version=5 le dice a Flyway que todo hasta V5 inclusive
+     *      ya existe, y solo debe aplicar V6 en adelante.
+     *
+     * GIVEN: application-prod.yml con spring.flyway.baseline-version: 5
+     * WHEN:  Se lee la propiedad spring.flyway.baseline-version
+     * THEN:  Es exactamente 5
+     */
+    @Test
+    void prodProfile_FlywayBaselineVersionIsFive() {
+        assertThat(flywayBaselineVersion)
+                .as("El perfil prod debe baselinar en V5 porque Supabase "
+                   + "ya tiene V1-V5 aplicadas en flyway_schema_history")
+                .isEqualTo(5);
+    }
+
+    /**
+     * WHAT: Triangulacion — verifica via lectura directa del YAML que
+     *       los valores de Flyway baseline estan presentes en el archivo fuente.
+     *
+     * WHY: Doble verificacion: no solo confiamos en @Value (que podria
+     *      ser sobreescrito), sino que leemos el YAML fuente para confirmar
+     *      que las propiedades estan realmente escritas en application-prod.yml.
+     *
+     * GIVEN: application-prod.yml con propiedades de Flyway baseline
+     * WHEN:  Se lee el contenido del archivo YAML fuente
+     * THEN:  Contiene baseline-on-migrate: true y baseline-version: 5
+     */
+    @Test
+    void prodYaml_DefinesFlywayBaselineProperties() {
+        String yamlContent = readProdYamlContent();
+
+        assertThat(yamlContent)
+                .as("application-prod.yml debe contener baseline-on-migrate: true "
+                   + "para el primer deploy a Render con DB existente")
+                .contains("baseline-on-migrate: true");
+
+        assertThat(yamlContent)
+                .as("application-prod.yml debe contener baseline-version: 5 "
+                   + "porque V1-V5 ya estan aplicadas en Supabase")
+                .contains("baseline-version: 5");
     }
 }
