@@ -285,18 +285,18 @@ class AuthServiceTest {
         assertNotNull(response, "La respuesta no debe ser nula");
         assertEquals("access-token", response.accessToken());
         assertEquals("refresh-token", response.refreshToken());
-        // WHAT: register() crea usuarios SIN roles (UR-R4) — role deprecated es null
-        assertNull(response.role(),
-                "register() crea usuario sin roles: role deprecated debe ser null");
+        // WHAT: register() asigna CUSTOMER como rol por defecto
+        assertEquals("CUSTOMER", response.role(),
+                "register() debe asignar role=CUSTOMER: " + response.role());
         assertEquals("test@mail.com", response.email(),
                 "El campo email debe contener el email del usuario");
         assertEquals("test", response.username(),
                 "El username debe ser el prefijo auto-generado desde el email");
         assertNotNull(response.createdAt());
-        // WHAT: register() ahora crea usuarios sin roles — admin los asigna luego (UR-R4)
-        assertNotNull(response.roles(), "roles no debe ser null (vacio = sin roles)");
-        assertTrue(response.roles().isEmpty(),
-                "register() debe crear usuario con cero roles: " + response.roles());
+        // WHAT: register() ahora asigna Role.CUSTOMER como default
+        assertNotNull(response.roles(), "roles no debe ser null");
+        assertTrue(response.roles().contains("CUSTOMER"),
+                "register() debe crear usuario con roles=[CUSTOMER]: " + response.roles());
 
         // Verificar que se usaron las dependencias correctas
         verify(userRepository).existsByEmail("test@mail.com");

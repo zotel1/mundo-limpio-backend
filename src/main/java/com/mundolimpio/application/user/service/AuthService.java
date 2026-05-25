@@ -30,18 +30,18 @@ import java.util.stream.Collectors;
  * Servicio de autenticación: registro, login y refresh de tokens.
  * <p>
  * WHAT: register() acepta email+password, verifica unicidad de email,
- * auto-genera username desde el prefijo del email, crea usuario SIN roles
- * (UR-R4: admin asigna roles luego), y devuelve LoginResponse con campos
+ * auto-genera username desde el prefijo del email, crea usuario con rol
+ * CUSTOMER por defecto, y devuelve LoginResponse con campos
  * email + username + roles. login() y refresh() autentican por email.
  * <p>
  * WHY: El frontend Flutter envía email+password. Spring Security autentica
  * con UsernamePasswordAuthenticationToken(email, password). User.getUsername()
- * devuelve email → JWT sub = email automáticamente. El usuario nuevo no tiene
- * roles hasta que un ADMIN los asigne via PATCH /users/{id}/roles.
+ * devuelve email → JWT sub = email automáticamente. El usuario nuevo recibe
+ * CUSTOMER como rol base (solo lectura de productos).
  * <p>
- * DIFFERENCES: Antes register asignaba Role.SALES_CLERK por defecto. Ahora
- * asigna Set.of() (sin roles). LoginResponse ahora incluye campo roles
- * con la lista completa de roles del usuario.
+ * DIFFERENCES: Antes register asignaba Set.of() (sin roles). Ahora
+ * asigna Role.CUSTOMER. buildLoginResponse() nunca devuelve null en el
+ * campo role deprecated — siempre devuelve "CUSTOMER" como fallback.
  */
 @Service
 public class AuthService {
@@ -72,12 +72,12 @@ public class AuthService {
      * Registra un nuevo usuario con email+password.
      * <p>
      * WHAT: Verifica que el email no esté duplicado, genera un username único
-     * desde el prefijo del email, persiste el usuario SIN roles
-     * (UR-R4: admin asigna roles luego via PATCH /users/{id}/roles),
+     * desde el prefijo del email, persiste el usuario con rol CUSTOMER,
      * y devuelve LoginResponse con email + username + roles + tokens.
      * WHY: El frontend envía email; el username es interno para display/admin.
-     * El usuario nuevo no debe tener permisos hasta que un ADMIN se los asigne.
-     * DIFFERENCES: Antes asignaba Role.SALES_CLERK. Ahora asigna Set.of().
+     * El usuario nuevo recibe CUSTOMER como rol base de solo lectura.
+     * ADMIN puede asignar roles superiores via PATCH /users/{id}/roles.
+     * DIFFERENCES: Antes asignaba Set.of() (sin roles). Ahora asigna Role.CUSTOMER.
      *
      * @param request DTO con email y password
      * @return LoginResponse con tokens, email, username, roles y createdAt
@@ -92,9 +92,9 @@ public class AuthService {
         // 2. Generar username único desde el prefijo del email
         String username = generateUniqueUsername(request.email());
 
-        // 3. Crear y persistir el usuario SIN roles (UR-R4: admin asigna despues)
+        // 3. Crear y persistir el usuario con rol CUSTOMER por defecto
         User user = new User(username, request.email(),
-                passwordEncoder.encode(request.password()) /* sin roles: varargs vacio */);
+                passwordEncoder.encode(request.password()), Role.CUSTOMER);
         User saved = userRepository.save(user);
 
         // 4. Generar tokens
@@ -217,7 +217,8 @@ public class AuthService {
         List<String> roleStrings = userRoles.stream()
                 .map(Enum::name)
                 .toList();
-        String deprecatedRole = user.getRole() != null ? user.getRole().name() : null;
+        // WHAT: El campo deprecated nunca debe ser null — si no hay roles, devuelve CUSTOMER
+        String deprecatedRole = userRoles.isEmpty() ? "CUSTOMER" : user.getRole().name();
 
         return new LoginResponse(
                 accessToken,

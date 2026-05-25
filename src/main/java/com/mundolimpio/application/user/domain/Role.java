@@ -10,6 +10,8 @@ package com.mundolimpio.application.user.domain;
  * sucesor semantico) y se agregan 5 nuevos roles.
  */
 public enum Role {
+    /** WHAT: Rol base de solo lectura (ver productos, registrarse) */
+    CUSTOMER,
     /** WHAT: Control total del sistema (usuarios, configuracion, reportes) */
     ADMIN,
     /** WHAT: Gestion de stock: productos, inventario, compras, recibos */
