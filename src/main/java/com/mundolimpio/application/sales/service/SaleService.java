@@ -145,11 +145,12 @@ public class SaleService {
                 BigDecimal quantityFromBatch = remainingQuantity.min(batchStock);
 
                 // Crear el SaleItem con los datos snapshot del lote en este momento.
+                // quantityFromBatch ya es BigDecimal, se asigna directo sin .intValue().
                 // unitPriceAtSale y unitCostAtSale son el costo del lote en el momento
                 // de la venta (no cambian aunque el costo del lote cambie después).
                 SaleItem item = new SaleItem(
                         batch.getId(),
-                        quantityFromBatch.intValue(),
+                        quantityFromBatch,
                         batch.getUnitCostAtProduction(),  // precio de venta (actualmente = costo)
                         batch.getUnitCostAtProduction()   // costo unitario
                 );

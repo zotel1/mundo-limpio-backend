@@ -28,7 +28,7 @@ class PurchaseTest {
     void testConstructor_SetsAllFields() {
         // Given
         Supplier supplier = new Supplier("Proveedor Test");
-        User admin = new User("admin_test", "pass123", Role.ADMIN);
+        User admin = new User("admin_test", "admin_test@mundolimpio.com", "pass123", Role.ADMIN);
         LocalDate purchaseDate = LocalDate.of(2026, 5, 10);
         BigDecimal total = new BigDecimal("1500.75");
         PurchaseStatus status = PurchaseStatus.CONFIRMED;
@@ -57,7 +57,7 @@ class PurchaseTest {
     @Test
     void testDefaultStatus_IsPending() {
         Supplier supplier = new Supplier("Proveedor");
-        User admin = new User("admin", "pass", Role.ADMIN);
+        User admin = new User("admin", "admin@mundolimpio.com", "pass", Role.ADMIN);
 
         Purchase purchase = new Purchase(
                 "https://img.jpg", supplier, admin,
@@ -128,7 +128,7 @@ class PurchaseTest {
     // Helper: crea un Purchase mínimo para tests
     private Purchase createMinimalPurchase() {
         Supplier supplier = new Supplier("Supplier Test");
-        User admin = new User("admin", "pass", Role.ADMIN);
+        User admin = new User("admin", "admin@mundolimpio.com", "pass", Role.ADMIN);
         return new Purchase(
                 "https://img.jpg", supplier, admin,
                 LocalDate.now(), new BigDecimal("100.00"),

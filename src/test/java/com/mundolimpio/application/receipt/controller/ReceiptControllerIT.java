@@ -64,12 +64,12 @@ class ReceiptControllerIT extends AbstractIntegrationTest {
         userRepository.deleteAll();
 
         // Crear admin y generar JWT
-        User admin = new User("admin_test", "$2a$10$encodedPassword", Role.ADMIN);
+        User admin = new User("admin_test", "admin_test@mundolimpio.com", "$2a$10$encodedPassword", Role.ADMIN);
         userRepository.save(admin);
         adminToken = jwtService.generateToken(admin);
 
         // Crear operator para test de forbidden
-        User operator = new User("operator_test", "$2a$10$encodedPassword", Role.SALES_CLERK);
+        User operator = new User("operator_test", "operator_test@mundolimpio.com", "$2a$10$encodedPassword", Role.SALES_CLERK);
         userRepository.save(operator);
         operatorToken = jwtService.generateToken(operator);
     }

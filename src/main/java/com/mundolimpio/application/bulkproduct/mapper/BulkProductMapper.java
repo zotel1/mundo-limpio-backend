@@ -23,7 +23,7 @@ public class BulkProductMapper {
                 null,
                 request.name(),
                 request.currentStockLiters(),
-                request.costperLiter(),
+                request.costPerLiter(),
                 request.conversionRatio()
         );
         entity.setActive(true); // Por defecto, la materia prima se crea activa
@@ -41,8 +41,8 @@ public class BulkProductMapper {
         if (request.currentStockLiters() != null) {
             entity.setCurrentStockLiters(request.currentStockLiters());
         }
-        if (request.costperLiter() != null) {
-            entity.setCostPerLiter(request.costperLiter());
+        if (request.costPerLiter() != null) {
+            entity.setCostPerLiter(request.costPerLiter());
         }
         if (request.conversionRatio() != null) {
             entity.setConversionRatio(request.conversionRatio());

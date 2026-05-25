@@ -35,7 +35,7 @@ class ReceiptMapperTest {
     void setUp() {
         mapper = new ReceiptMapper();
         supplier = new Supplier("Proveedor Test");
-        admin = new User("admin", "pass", Role.ADMIN);
+        admin = new User("admin", "admin@mundolimpio.com", "pass", Role.ADMIN);
     }
 
     /**

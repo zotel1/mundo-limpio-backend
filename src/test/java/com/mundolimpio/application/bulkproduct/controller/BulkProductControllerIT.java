@@ -56,7 +56,7 @@ class BulkProductControllerIT extends AbstractIntegrationTest {
         bulkProductRepository.deleteAll();
         userRepository.deleteAll();
 
-        User admin = new User("admin_test", "$2a$10$encodedPassword", Role.ADMIN);
+        User admin = new User("admin_test", "admin_test@mundolimpio.com", "$2a$10$encodedPassword", Role.ADMIN);
         userRepository.save(admin);
 
         String token = jwtService.generateToken(admin);

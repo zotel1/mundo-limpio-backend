@@ -70,7 +70,7 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
         userRepository.deleteAll();
 
         // Crear usuario ADMIN
-        User admin = new User("admin_prod", "password", Role.ADMIN);
+        User admin = new User("admin_prod", "admin_prod@mundolimpio.com", "password", Role.ADMIN);
         userRepository.save(admin);
 
         // Generar JWT token

@@ -62,11 +62,13 @@ public class SaleMapper {
     /**
      * Convierte un SaleItem individual a SaleItemResponse.
      * private porque solo se usa internamente dentro del stream de toResponse().
+     * DIFFERENCES: Antes convertia Integer a BigDecimal via new BigDecimal(). Ahora
+     * item.getQuantity() ya devuelve BigDecimal directo (SaleItem.quantity cambio a BigDecimal).
      */
     private SaleItemResponse toItemResponse(SaleItem item) {
         return new SaleItemResponse(
                 item.getProductionBatchId(),
-                new java.math.BigDecimal(item.getQuantity()), // Convertimos int a BigDecimal para consistencia
+                item.getQuantity(),
                 item.getUnitPriceAtSale(),
                 item.getUnitCostAtSale()
         );

@@ -49,7 +49,7 @@ class PurchaseRepositoryTest extends AbstractIntegrationTest {
         userRepository.deleteAll();
 
         supplier = supplierRepository.save(new Supplier("Proveedor Test"));
-        admin = userRepository.save(new User("admin_repo", "pass", Role.ADMIN));
+        admin = userRepository.save(new User("admin_repo", "admin_repo@mundolimpio.com", "pass", Role.ADMIN));
     }
 
     /**
