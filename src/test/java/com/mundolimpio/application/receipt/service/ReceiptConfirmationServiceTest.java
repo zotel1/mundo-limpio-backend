@@ -66,7 +66,7 @@ class ReceiptConfirmationServiceTest {
 
     @BeforeEach
     void setUp() {
-        admin = new User("admin_test", "pass", Role.ADMIN);
+        admin = new User("admin_test", "admin_test@mundolimpio.com", "pass", Role.ADMIN);
         existingSupplier = new Supplier("Proveedor Existente");
 
         validRequest = new ReceiptConfirmRequest(

@@ -73,7 +73,7 @@ class ReceiptConfirmE2EIT extends AbstractIntegrationTest {
         bulkProductRepository.deleteAll();
 
         // Crear admin y generar JWT
-        User admin = new User("admin_e2e", "$2a$10$encodedPassword", Role.ADMIN);
+        User admin = new User("admin_e2e", "admin_e2e@mundolimpio.com", "$2a$10$encodedPassword", Role.ADMIN);
         userRepository.save(admin);
         adminToken = jwtService.generateToken(admin);
     }
