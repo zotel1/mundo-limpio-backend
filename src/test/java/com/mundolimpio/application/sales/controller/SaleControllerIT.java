@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -501,5 +502,51 @@ class SaleControllerIT extends AbstractIntegrationTest {
         // Si intentáramos salvar una entidad con el version viejo, fallaría
         Long versionAfter = productionBatchRepository.findById(batch.getId()).orElseThrow().getVersion();
         assertNotEquals(versionBefore, versionAfter, "Version should have incremented after save");
+    }
+
+    /**
+     * Test 5.5: BigDecimal precision — venta con cantidad fraccionaria.
+     * <p>
+     * WHAT: Verifica que una venta con quantity=2.5 preserva la precisión
+     * BigDecimal en SaleItem, sin truncar a Integer.
+     * WHY: SaleItem.quantity cambió de Integer a BigDecimal para soportar
+     * fracciones de producto (ej: 2.5 litros).
+     */
+    @Test
+    void testCreateSale_BigDecimalPrecisionPreserved() {
+        // Given: Crear producto con stock suficiente
+        Product product = new Product(null, "GEL-001", "Gel antibacterial 250ml", new BigDecimal("8.00"), true);
+        Product savedProduct = productRepository.save(product);
+
+        BulkProduct bulk = new BulkProduct(null, "Alcohol en Gel", new BigDecimal("40.00"),
+                new BigDecimal("3.00"), new BigDecimal("1.0"));
+        BulkProduct savedBulk = bulkProductRepository.save(bulk);
+
+        ProductionBatch batch = new ProductionBatch(
+                savedProduct, savedBulk,
+                new BigDecimal("100.00"), new BigDecimal("100.00"),
+                new BigDecimal("3.00"), new BigDecimal("100.00")
+        );
+        batch.setProductionDate(Instant.now().minus(3, ChronoUnit.DAYS));
+        productionBatchRepository.save(batch);
+
+        // When: Venta con cantidad fraccionaria 2.5
+        SaleRequest request = new SaleRequest(savedProduct.getId(), new BigDecimal("2.5"));
+        ResponseEntity<SaleResponse> response = restTemplate.exchange(
+                "/api/v1/sales",
+                HttpMethod.POST,
+                createRequest(request, adminHeaders),
+                SaleResponse.class
+        );
+
+        // Then: La respuesta preserva la precisión BigDecimal
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+
+        SaleItemResponse item = response.getBody().items().get(0);
+        // quantity debe ser 2.5 (BigDecimal), NO 2 (truncado a Integer)
+        assertThat(item.quantity())
+                .as("La cantidad fraccionaria debe preservarse como BigDecimal")
+                .isEqualByComparingTo(new BigDecimal("2.5"));
     }
 }

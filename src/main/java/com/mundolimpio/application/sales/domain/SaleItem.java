@@ -17,6 +17,9 @@ import java.math.BigDecimal;
  *   historial de venta debe mantenerse intacto. Es un snapshot del momento de la venta.
  * - unitPriceAtSale y unitCostAtSale son snapshots del precio y costo en el momento
  *   exacto de la venta. Si el costo del lote cambia después, la venta no se altera.
+ * - quantity es BigDecimal (antes Integer) para soportar fracciones de producto
+ *   (ej: 2.5 litros) y mantener consistencia con SaleRequest.quantity que ya es
+ *   BigDecimal. La columna usa precision=19, scale=4 para coincidir con la BD.
  */
 @Entity
 @Table(name = "sale_items")
@@ -43,8 +46,8 @@ public class SaleItem {
     private Long productionBatchId;
 
     /** Cantidad de unidades descontadas de este lote en particular */
-    @Column(nullable = false)
-    private Integer quantity;
+    @Column(nullable = false, precision = 19, scale = 4)
+    private BigDecimal quantity;
 
     /**
      * Precio unitario aplicado en esta venta. Snapshot del momento de la transacción.
@@ -69,7 +72,7 @@ public class SaleItem {
      * Constructor principal. Todos los campos son obligatorios porque un item
      * sin alguno de estos datos no tiene sentido de negocio.
      */
-    public SaleItem(Long productionBatchId, Integer quantity, BigDecimal unitPriceAtSale, BigDecimal unitCostAtSale) {
+    public SaleItem(Long productionBatchId, BigDecimal quantity, BigDecimal unitPriceAtSale, BigDecimal unitCostAtSale) {
         this.productionBatchId = productionBatchId;
         this.quantity = quantity;
         this.unitPriceAtSale = unitPriceAtSale;
@@ -98,7 +101,7 @@ public class SaleItem {
         return productionBatchId;
     }
 
-    public Integer getQuantity() {
+    public BigDecimal getQuantity() {
         return quantity;
     }
 
