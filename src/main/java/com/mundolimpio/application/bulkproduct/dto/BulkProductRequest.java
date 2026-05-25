@@ -15,16 +15,16 @@ import java.math.BigDecimal;
  * de negocio y produce HTTP 400 con mensajes descriptivos.
  * DIFFERENCES: Antes no tenia validaciones en los campos numericos.
  * Ahora name es @NotBlank, currentStockLiters @PositiveOrZero,
- * costperLiter y conversionRatio @Positive.
+ * costPerLiter y conversionRatio @Positive.
  *
  * @param name Nombre del producto (ej: "Cloro Puro", "Detergente Base")
  * @param currentStockLiters Stock actual en litros
- * @param costperLiter Costo por litro de materia prima
+ * @param costPerLiter Costo por litro de materia prima
  * @param conversionRatio Ratio de conversion (ej: 4 para cloro 1:4)
  */
 public record BulkProductRequest(
         @NotBlank String name,
         @NotNull @PositiveOrZero BigDecimal currentStockLiters,
-        @NotNull @Positive BigDecimal costperLiter,
+        @NotNull @Positive BigDecimal costPerLiter,
         @NotNull @Positive BigDecimal conversionRatio
 ) {}

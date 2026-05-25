@@ -1,0 +1,30 @@
+# State: Fix SecurityConfig product path mismatch - ARCHIVED
+# Managed by: sdd-apply, sdd-verify, sdd-archive
+# See: openspec-convention.md for format
+# Archived: 2026-05-19
+
+phase: "ARCHIVED"
+progress: "SDD Cycle COMPLETE - All artifacts archived, spec synced to main"
+completed_tasks:
+  - "1.1 Create SecurityConfigProductAccessTest.java — 5 test methods, standalone PostgreSQLContainer"
+  - "1.2 Run test against current code → confirmed RED (2 failures)"
+  - "2.1 Edit SecurityConfig.java:75 — replace /api/v1/product/** → /api/v1/products/**"
+  - "3.1 Full regression: 148/148 tests pass, 0 failures, 0 errors, BUILD SUCCESS"
+  - "4.1 Commit with conventional message: fix(security): correct product endpoint path from singular to plural"
+  - "4.2 Push to origin: branch fix/security-config-path pushed to GitHub"
+pending_tasks: []
+next_action: "SDD Cycle Complete - Ready for next change"
+strict_tdd: true
+artifact_store: "engram (with filesystem archive)"
+spec_synced: true
+spec_location: "openspec/specs/security-config/spec.md"
+archive_location: "openspec/changes/archive/2026-05-19-fix-security-config-path/"
+engram_archive_id: "sdd/fix-security-config-path/archive-report"
+engram_observations:
+  proposal: 304
+  spec: 306
+  design: 310
+  tasks: 311
+  apply_progress: 312
+  verify_report: 315
+last_updated: "2026-05-19T21:45:00-03:00"
