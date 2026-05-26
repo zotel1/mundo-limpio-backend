@@ -1,5 +1,7 @@
 package com.mundolimpio.application.sales.mapper;
 
+import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
+import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
 import com.mundolimpio.application.sales.domain.Sale;
 import com.mundolimpio.application.sales.domain.SaleItem;
 import com.mundolimpio.application.sales.dto.SaleRequest;
@@ -22,9 +24,25 @@ import java.util.stream.Collectors;
  * - toEntity() está parcialmente implementado porque en nuestro flujo real,
  *   la entidad Sale se crea directamente en SaleService con los datos FIFO
  *   (no desde el request). Este método queda como placeholder.
+ * 
+ * DIFFERENCES con PR 1 (HIGH-1):
+ * - Ahora inyecta ProductionBatchRepository para resolver productId y productName
+ *   desde el ProductionBatch asociado al SaleItem.
+ * - N+1 en toItemResponse: cada item resuelve su batch → product por separado.
+ *   Aceptable para MVP. Optimizar con JOIN query si hay problemas de performance.
  */
 @Component
 public class SaleMapper {
+
+    private final ProductionBatchRepository productionBatchRepository;
+
+    /**
+     * Constructor con inyección de dependencias.
+     * WHY: HIGH-1 — necesitamos resolver el producto desde el batch del SaleItem.
+     */
+    public SaleMapper(ProductionBatchRepository productionBatchRepository) {
+        this.productionBatchRepository = productionBatchRepository;
+    }
 
     /**
      * Convierte un request de creación a entidad Sale.
@@ -62,15 +80,33 @@ public class SaleMapper {
     /**
      * Convierte un SaleItem individual a SaleItemResponse.
      * private porque solo se usa internamente dentro del stream de toResponse().
-     * DIFFERENCES: Antes convertia Integer a BigDecimal via new BigDecimal(). Ahora
-     * item.getQuantity() ya devuelve BigDecimal directo (SaleItem.quantity cambio a BigDecimal).
+     * 
+     * DIFFERENCES con PR 1 (HIGH-1):
+     * - Ahora resuelve productId y productName desde ProductionBatch → Product.
+     * - N+1: por cada item, hace un lookup de ProductionBatch por ID.
+     *   Aceptable para MVP (cantidad de items por venta es pequeña).
+     * - Si el batch no existe (data corruption), usa null para no romper la respuesta.
      */
     private SaleItemResponse toItemResponse(SaleItem item) {
+        // Resolver productId y productName desde el batch del SaleItem.
+        // WHY: HIGH-1 — el listado de ventas necesita mostrar qué producto se vendió.
+        Long productId = null;
+        String productName = null;
+        ProductionBatch batch = productionBatchRepository.findById(item.getProductionBatchId()).orElse(null);
+        if (batch != null && batch.getProduct() != null) {
+            productId = batch.getProduct().getId();
+            productName = batch.getProduct().getName();
+        }
+
         return new SaleItemResponse(
                 item.getProductionBatchId(),
                 item.getQuantity(),
                 item.getUnitPriceAtSale(),
-                item.getUnitCostAtSale()
+                item.getUnitCostAtSale(),
+                productId,      // WHAT: ID del producto resuelto desde el batch
+                                // WHY: HIGH-1 — GET /sales necesita mostrar producto
+                productName     // WHAT: Nombre del producto resuelto desde el batch
+                                // WHY: HIGH-1 — mostrar nombre legible en la respuesta
         );
     }
 }
