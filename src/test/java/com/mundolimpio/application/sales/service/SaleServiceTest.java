@@ -110,7 +110,8 @@ class SaleServiceTest extends AbstractIntegrationTest {
             // Esperado si no hay datos — solo verificamos que el método se ejecuta
         }
         
-        assertThat(true).isTrue(); // Placeholder para fase GREEN
+        // Verificamos que el método se ejecuta sin excepciones inesperadas
+        // (IllegalArgumentException por falta de datos es esperado)
     }
 
     /**
@@ -131,7 +132,7 @@ class SaleServiceTest extends AbstractIntegrationTest {
             // Esperado si no hay datos — solo verificamos que el método se ejecuta
         }
         
-        assertThat(true).isTrue(); // Placeholder para fase GREEN
+        // Verificamos que el método se ejecuta sin excepciones inesperadas
     }
 
     // ==================== PRECIO DE VENTA REAL — CRIT-1 ====================
