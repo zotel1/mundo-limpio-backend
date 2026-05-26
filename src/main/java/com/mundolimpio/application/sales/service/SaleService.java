@@ -17,7 +17,6 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -88,13 +87,25 @@ public class SaleService {
      * ProductionBatch detecta la colisión y lanza esta excepción. La capturamos
      * aquí para retornar un mensaje amigable en vez de un 500 genérico.
      * 
-     * @param request DTO con productId y quantity solicitada
+     * DIFFERENCES con PR 1 (CRIT-1):
+     * - Ahora acepta unitPrice opcional en SaleRequest.
+     * - Si unitPrice está presente, se usa como precio de venta.
+     * - Si unitPrice es null, se usa el costo del lote (backward compatible).
+     * - totalAmount se calcula con el precio de venta (unitPrice × quantity total),
+     *   no con el costo por lote.
+     * 
+     * @param request DTO con productId, quantity y unitPrice opcional
      * @return SaleResponse con los datos de la venta creada
      */
     @Transactional
     public SaleResponse createSale(SaleRequest request) {
         try {
             log.info("Creating sale for productId: {}, quantity: {}", request.productId(), request.quantity());
+
+            // PASO 0: Determinar precio de venta.
+            // unitPrice es opcional: si el request lo trae, se usa ese valor;
+            // si es null, se usa el costo del lote (backward compatible).
+            BigDecimal unitPrice = request.unitPrice();
 
             // PASO 1: Obtener lotes con stock disponible en orden FIFO (más antiguo primero).
             // POR QUÉ OrderByProductionDateAsc: El lote más viejo se vende primero
@@ -120,15 +131,16 @@ public class SaleService {
                                 totalAvailable, request.quantity()));
             }
 
-            // PASO 4: Crear la entidad Sale. El totalAmount se calcula multiplicando
-            // las cantidades por el costo unitario de cada lote (ver calculateTotalAmount).
-            Sale sale = new Sale(calculateTotalAmount(batches, request.quantity()));
+            // PASO 4: Crear la entidad Sale.
+            // DIFFERENCES: calculateTotalAmount ahora acepta unitPrice como tercer parámetro.
+            // Si unitPrice != null → totalAmount = unitPrice × quantity total.
+            // Si unitPrice == null → totalAmount = suma de (costo × quantity) por lote.
+            Sale sale = new Sale(calculateTotalAmount(batches, request.quantity(), unitPrice));
             sale = saleRepository.save(sale);
 
             // PASO 5: Aplicar deducción FIFO - iterar lotes y descontar stock.
             // remainingQuantity trackea cuánto nos falta descontar en total.
             BigDecimal remainingQuantity = request.quantity();
-            List<SaleItem> saleItems = new ArrayList<>();
 
             for (ProductionBatch batch : batches) {
                 // Si ya descontamos todo lo que necesitábamos, paramos.
@@ -144,15 +156,23 @@ public class SaleService {
                 BigDecimal batchStock = batch.getCurrentStock();
                 BigDecimal quantityFromBatch = remainingQuantity.min(batchStock);
 
+                // Determinar el precio de venta para este item.
+                // DIFFERENCES (CRIT-1):
+                // - Si unitPrice fue especificado en el request, todos los items usan ESE precio.
+                // - Si no, cada item usa el costo de su lote (backward compatible).
+                BigDecimal itemUnitPrice = (unitPrice != null) ? unitPrice : batch.getUnitCostAtProduction();
+                BigDecimal itemUnitCost = batch.getUnitCostAtProduction();
+
                 // Crear el SaleItem con los datos snapshot del lote en este momento.
                 // quantityFromBatch ya es BigDecimal, se asigna directo sin .intValue().
-                // unitPriceAtSale y unitCostAtSale son el costo del lote en el momento
-                // de la venta (no cambian aunque el costo del lote cambie después).
+                // unitPriceAtSale: precio de venta (puede ser unitPrice del request o costo).
+                // unitCostAtSale: costo real del lote en el momento de la venta.
                 SaleItem item = new SaleItem(
                         batch.getId(),
                         quantityFromBatch,
-                        batch.getUnitCostAtProduction(),  // precio de venta (actualmente = costo)
-                        batch.getUnitCostAtProduction()   // costo unitario
+                        itemUnitPrice,     // WHAT: Precio de venta (real o fallback a costo)
+                                           // WHY: CRIT-1 — el vendedor fija el precio; si no, se usa el costo
+                        itemUnitCost       // Costo unitario real del lote (para margen)
                 );
                 item.setSale(sale);
                 sale.addItem(item);
@@ -204,18 +224,31 @@ public class SaleService {
     }
 
     /**
-     * Calcula el monto total de una venta usando los costos de los lotes en orden FIFO.
+     * Calcula el monto total de una venta.
      * 
      * POR QUÉ método separado:
      * - Necesitamos el total ANTES de crear la venta (el constructor de Sale lo requiere).
      * - Reutilizamos la misma lógica de iteración FIFO que usamos para crear los items.
      * - Separación de responsabilidades: createSale orquesta, calculateTotalAmount calcula.
      * 
+     * DIFFERENCES (CRIT-1):
+     * - Nuevo parámetro unitPrice: si no es null, totalAmount = unitPrice × quantity.
+     * - Si unitPrice es null, se usa la lógica FIFO con costo por lote (backward compatible).
+     * 
      * @param batches Lista de lotes en orden FIFO (ya filtrados y ordenados)
      * @param quantity Cantidad total solicitada
-     * @return Monto total = suma de (cantidad × costo) por cada lote afectado
+     * @param unitPrice Precio de venta opcional. null = usar costo del lote
+     * @return Monto total calculado
      */
-    private BigDecimal calculateTotalAmount(List<ProductionBatch> batches, BigDecimal quantity) {
+    private BigDecimal calculateTotalAmount(List<ProductionBatch> batches, BigDecimal quantity, BigDecimal unitPrice) {
+        // WHAT: Si hay precio de venta fijo, es simple: unitPrice × quantity.
+        // WHY: CRIT-1 — el vendedor fijó un precio, se usa ese para el total.
+        if (unitPrice != null) {
+            return unitPrice.multiply(quantity);
+        }
+
+        // WHAT: Sin precio fijo, calculamos por lote (backward compatible).
+        // WHY: El total es la suma de (cantidad × costo) de cada lote afectado en FIFO.
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal remaining = quantity;
 
