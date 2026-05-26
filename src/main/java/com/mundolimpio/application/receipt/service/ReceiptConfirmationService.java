@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * WHAT: Servicio que orquesta el flujo de confirmación de una compra.
@@ -58,6 +59,38 @@ public class ReceiptConfirmationService {
         this.purchaseRepository = purchaseRepository;
         this.bulkProductRepository = bulkProductRepository;
         this.mapper = mapper;
+    }
+
+    // ==================== MÉTODOS DE CONSULTA — HIGH-2 ====================
+    //
+    // POR QUÉ: HIGH-2 — Se necesitan endpoints GET para listar y ver detalle
+    // de compras. @Transactional(readOnly = true) override del @Transactional
+    // de clase porque estas operaciones son de solo lectura.
+
+    /**
+     * Obtiene todas las compras (purchases). Sin paginación por ahora (MVP).
+     * 
+     * @return Lista de PurchaseResponse con todas las compras
+     */
+    @Transactional(readOnly = true)
+    public List<PurchaseResponse> findAll() {
+        return purchaseRepository.findAll().stream()
+                .map(mapper::toResponse)
+                .toList();
+    }
+
+    /**
+     * Obtiene una compra por su ID.
+     * 
+     * @param id ID de la compra
+     * @return PurchaseResponse con los datos de la compra
+     * @throws java.util.NoSuchElementException si no existe la compra
+     */
+    @Transactional(readOnly = true)
+    public PurchaseResponse findById(Long id) {
+        Purchase purchase = purchaseRepository.findById(id)
+                .orElseThrow(() -> new java.util.NoSuchElementException("Purchase not found with id: " + id));
+        return mapper.toResponse(purchase);
     }
 
     /**

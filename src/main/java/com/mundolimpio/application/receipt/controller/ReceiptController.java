@@ -20,6 +20,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+import java.util.NoSuchElementException;
+
 /**
  * WHAT: Controlador REST para el módulo de tickets de compra (receipts).
  * WHY: Expone los endpoints del flujo de procesamiento OCR de tickets.
@@ -28,10 +31,16 @@ import org.springframework.web.multipart.MultipartFile;
  * ENDPOINTS:
  * POST /api/v1/receipts/process — Sube imagen del ticket y la procesa con OCR
  * POST /api/v1/receipts/confirm  — Confirma los datos revisados y persiste la compra
+ * GET  /api/v1/receipts         — Lista todas las compras
+ * GET  /api/v1/receipts/{id}    — Obtiene detalle de una compra
  *
  * DIFFERENCES con BulkProductController:
  * - Este controlador maneja multipart/form-data (imagen) en vez de JSON.
  * - Usa @PreAuthorize a nivel de método (mismo patrón que BulkProductController).
+ * 
+ * DIFFERENCES con PR 1 (HIGH-2):
+ * - Nuevos endpoints GET para listar y ver detalle de compras.
+ * - Roles para consulta: ADMIN, STOCK_MANAGER, ACCOUNTANT.
  */
 @RestController
 @RequestMapping("/api/v1/receipts")
@@ -149,5 +158,65 @@ public class ReceiptController {
 
         PurchaseResponse response = confirmationService.confirm(request, admin);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    // ========================= GET ALL =========================
+
+    /**
+     * Lista todas las compras (purchases).
+     * 
+     * WHAT: Retorna lista de compras sin paginación (MVP).
+     * WHY: HIGH-2 — ADMIN, STOCK_MANAGER y ACCOUNTANT necesitan consultar compras.
+     * 
+     * @return Lista de PurchaseResponse
+     */
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'ACCOUNTANT')")
+    // WHAT: ACCOUNTANT puede consultar compras
+    // WHY: HIGH-2 — el contador necesita ver compras para contabilidad
+    @Operation(
+            summary = "List all purchases",
+            description = "Returns all purchases. ADMIN, STOCK_MANAGER, and ACCOUNTANT can access."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "List of purchases retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized: no authentication token"),
+            @ApiResponse(responseCode = "403", description = "Forbidden: insufficient role")
+    })
+    public ResponseEntity<List<PurchaseResponse>> getAllPurchases() {
+        List<PurchaseResponse> purchases = confirmationService.findAll();
+        return ResponseEntity.ok(purchases);
+    }
+
+    // ========================= GET BY ID =========================
+
+    /**
+     * Obtiene una compra por su ID.
+     * 
+     * WHAT: Retorna el detalle de una compra específica con sus items.
+     * WHY: HIGH-2 — necesario para ver detalle de una compra individual.
+     * 
+     * @param id ID de la compra
+     * @return PurchaseResponse con items
+     */
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'ACCOUNTANT')")
+    @Operation(
+            summary = "Get purchase by ID",
+            description = "Returns a purchase by its ID with all items. ADMIN, STOCK_MANAGER, and ACCOUNTANT can access."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Purchase found"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized: no authentication token"),
+            @ApiResponse(responseCode = "403", description = "Forbidden: insufficient role"),
+            @ApiResponse(responseCode = "404", description = "Purchase not found")
+    })
+    public ResponseEntity<PurchaseResponse> getPurchaseById(@PathVariable Long id) {
+        try {
+            PurchaseResponse response = confirmationService.findById(id);
+            return ResponseEntity.ok(response);
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }
