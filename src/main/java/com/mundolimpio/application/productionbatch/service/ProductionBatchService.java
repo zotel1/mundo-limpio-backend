@@ -60,6 +60,20 @@ public class ProductionBatchService {
         BulkProduct bulkProduct = bulkProductRepository.findById(request.bulkProductId())
                 .orElseThrow(() -> new ProductionBatchNotFoundException("Bulk product not found with id: " + request.bulkProductId()));
 
+        // WHAT: Validar que la materia prima esté activa.
+        // WHY: No se puede producir con materia prima desactivada (soft delete).
+        if (!bulkProduct.getActive()) {
+            throw new IllegalArgumentException("Bulk product is not active");
+        }
+
+        // WHAT: Validar que haya stock suficiente de materia prima.
+        // WHY: No se puede producir más de lo que hay en stock.
+        // DIFFERENCES: Usamos compareTo() en lugar de >= porque BigDecimal es objeto.
+        if (bulkProduct.getCurrentStockLiters().compareTo(request.rawQuantityUsed()) < 0) {
+            throw new IllegalArgumentException("Insufficient bulk product stock: available "
+                    + bulkProduct.getCurrentStockLiters() + ", required " + request.rawQuantityUsed());
+        }
+
         // Calcular litros producidos: rawQuantityUsed * conversionRatio
         BigDecimal initialQuantity = request.rawQuantityUsed()
                 .multiply(bulkProduct.getConversionRatio());

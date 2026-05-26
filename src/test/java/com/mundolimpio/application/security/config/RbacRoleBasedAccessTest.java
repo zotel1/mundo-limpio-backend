@@ -309,7 +309,7 @@ class RbacRoleBasedAccessTest extends AbstractIntegrationTest {
         mockProductionCreate();
         mockMvc.perform(post("/api/v1/production-batches")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":1,\"bulkProductId\":1,\"quantityProduced\":10}"))
+                        .content("{\"productId\":1,\"bulkProductId\":1,\"rawQuantityUsed\":10}"))
                 .andExpect(status().isCreated());
     }
 
@@ -441,7 +441,7 @@ class RbacRoleBasedAccessTest extends AbstractIntegrationTest {
         mockProductionCreate();
         mockMvc.perform(post("/api/v1/production-batches")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":1,\"bulkProductId\":1,\"quantityProduced\":10}"))
+                        .content("{\"productId\":1,\"bulkProductId\":1,\"rawQuantityUsed\":10}"))
                 .andExpect(status().isCreated());
     }
 
