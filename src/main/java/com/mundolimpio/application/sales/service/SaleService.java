@@ -10,7 +10,7 @@ import com.mundolimpio.application.sales.dto.SaleResponse;
 import com.mundolimpio.application.sales.mapper.SaleMapper;
 import com.mundolimpio.application.sales.repository.SaleItemRepository;
 import com.mundolimpio.application.sales.repository.SaleRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -222,6 +222,41 @@ public class SaleService {
             throw e; // Relanzamos para que GlobalExceptionHandler la maneje → 409
         }
     }
+
+    // ==================== MÉTODOS DE CONSULTA — HIGH-1 ====================
+    //
+    // POR QUÉ estos métodos:
+    // HIGH-1 — Se necesitan endpoints GET para listar y ver detalle de ventas.
+    // @Transactional(readOnly = true) porque son consultas de solo lectura.
+    // La anotación a nivel de clase no existe, así que la ponemos por método.
+
+    /**
+     * Obtiene todas las ventas. Sin paginación por ahora (MVP).
+     * 
+     * @return Lista de SaleResponse con todas las ventas
+     */
+    @Transactional(readOnly = true)
+    public List<SaleResponse> findAll() {
+        return saleRepository.findAll().stream()
+                .map(saleMapper::toResponse)
+                .toList();
+    }
+
+    /**
+     * Obtiene una venta por su ID.
+     * 
+     * @param id ID de la venta
+     * @return SaleResponse con los datos de la venta
+     * @throws java.util.NoSuchElementException si no existe la venta
+     */
+    @Transactional(readOnly = true)
+    public SaleResponse findById(Long id) {
+        Sale sale = saleRepository.findById(id)
+                .orElseThrow(() -> new java.util.NoSuchElementException("Sale not found with id: " + id));
+        return saleMapper.toResponse(sale);
+    }
+
+    // ==================== MÉTODOS PRIVADOS ====================
 
     /**
      * Calcula el monto total de una venta.
