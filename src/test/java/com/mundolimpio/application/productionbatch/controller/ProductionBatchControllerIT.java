@@ -7,6 +7,7 @@ import com.mundolimpio.application.product.repository.ProductRepository;
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
 import com.mundolimpio.application.productionbatch.dto.ProductionBatchRequest;
 import com.mundolimpio.application.productionbatch.dto.ProductionBatchResponse;
+import com.mundolimpio.application.inventory.repository.InventoryRepository;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
@@ -25,7 +26,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -53,6 +56,9 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
     private ProductionBatchRepository productionBatchRepository;
 
     @Autowired
+    private InventoryRepository inventoryRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -64,7 +70,9 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
     void setUp() {
         // Limpiar tablas en orden para evitar violaciones de FK
         // production_batches tiene FK a products y bulk_products
+        // inventory tiene FK a products
         productionBatchRepository.deleteAll();
+        inventoryRepository.deleteAll();
         productRepository.deleteAll();
         bulkProductRepository.deleteAll();
         userRepository.deleteAll();
@@ -81,6 +89,125 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
 
     private HttpEntity<?> getRequestEntity(Object body) {
         return new HttpEntity<>(body, adminHeaders);
+    }
+
+    private HttpEntity<?> getUnauthenticatedRequestEntity() {
+        return new HttpEntity<>(null, new HttpHeaders());
+    }
+
+    // ==================== GET ALL BATCHES TESTS ====================
+
+    @Test
+    void shouldGetAllBatches_HappyPath() {
+        // Crear materia prima y producto
+        BulkProduct bulk = new BulkProduct(null, "Cloro Puro", new BigDecimal("100.00"),
+                new BigDecimal("5.50"), new BigDecimal("4.0"));
+        BulkProduct savedBulk = bulkProductRepository.save(bulk);
+
+        Product product = new Product(null, "LAVANDINA-001", "Lavandina 3L", new BigDecimal("10.00"), true);
+        Product savedProduct = productRepository.save(product);
+
+        // Crear 3 lotes con fechas explicitas via repositorio (para controlar el orden)
+        ProductionBatch batch1 = new ProductionBatch(savedProduct, savedBulk,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("10.00"));
+        setProductionDate(batch1, Instant.parse("2026-05-01T10:00:00Z"));
+        productionBatchRepository.save(batch1);
+
+        ProductionBatch batch2 = new ProductionBatch(savedProduct, savedBulk,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("15.00"));
+        setProductionDate(batch2, Instant.parse("2026-05-15T10:00:00Z"));
+        productionBatchRepository.save(batch2);
+
+        ProductionBatch batch3 = new ProductionBatch(savedProduct, savedBulk,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("20.00"));
+        setProductionDate(batch3, Instant.parse("2026-05-28T10:00:00Z"));
+        productionBatchRepository.save(batch3);
+
+        // Obtener todos los lotes
+        ResponseEntity<List> response = restTemplate.exchange(
+                "/api/v1/production-batches",
+                HttpMethod.GET,
+                getRequestEntity(null),
+                List.class
+        );
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(3, response.getBody().size());
+
+        // Verificar orden: nuevo primero (DESC por productionDate)
+        List<Map<String, Object>> batches = response.getBody();
+        assertNotNull(batches);
+        String date0 = (String) batches.get(0).get("productionDate");
+        String date1 = (String) batches.get(1).get("productionDate");
+        String date2 = (String) batches.get(2).get("productionDate");
+        assertNotNull(date0);
+        assertNotNull(date1);
+        assertNotNull(date2);
+        // El mas reciente primero (DESC)
+        assertTrue(date0.compareTo(date1) > 0, "First batch should be newer than second");
+        assertTrue(date1.compareTo(date2) > 0, "Second batch should be newer than third");
+    }
+
+    @Test
+    void shouldGetAllBatches_EmptyList() {
+        ResponseEntity<List> response = restTemplate.exchange(
+                "/api/v1/production-batches",
+                HttpMethod.GET,
+                getRequestEntity(null),
+                List.class
+        );
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().isEmpty());
+    }
+
+    @Test
+    void shouldReturn401_WhenUnauthenticated() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v1/production-batches",
+                HttpMethod.GET,
+                getUnauthenticatedRequestEntity(),
+                String.class
+        );
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+    }
+
+    @Test
+    void shouldReturn403_WhenInsufficientRole() {
+        // Crear usuario con rol SALES (no tiene acceso)
+        User salesUser = new User("sales_user", "sales@mundolimpio.com", "password", Role.SALES_CLERK);
+        userRepository.save(salesUser);
+        String salesToken = jwtService.generateToken(salesUser);
+        HttpHeaders salesHeaders = new HttpHeaders();
+        salesHeaders.setBearerAuth(salesToken);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v1/production-batches",
+                HttpMethod.GET,
+                new HttpEntity<>(null, salesHeaders),
+                String.class
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+    }
+
+    /**
+     * Helper para setear productionDate via reflection.
+     */
+    private void setProductionDate(ProductionBatch batch, Instant date) {
+        try {
+            var field = ProductionBatch.class.getDeclaredField("productionDate");
+            field.setAccessible(true);
+            field.set(batch, date);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set productionDate", e);
+        }
     }
 
     @Test
@@ -119,7 +246,7 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
     @Test
     void shouldGetBatchesByProductId() {
         // Setup: crear materia prima y producto
-        BulkProduct bulk = new BulkProduct(null, "Cloro Puro", new BigDecimal("20.00"),
+        BulkProduct bulk = new BulkProduct(null, "Cloro Puro", new BigDecimal("100.00"),
                 new BigDecimal("5.50"), new BigDecimal("4.0"));
         BulkProduct savedBulk = bulkProductRepository.save(bulk);
 

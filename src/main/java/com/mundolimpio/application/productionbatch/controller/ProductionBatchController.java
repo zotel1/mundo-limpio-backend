@@ -22,6 +22,7 @@ import java.util.List;
  *
  * Mapeo:
  * POST   /api/v1/production-batches              → Crear lote (producción)
+ * GET    /api/v1/production-batches              → Listar todos
  * GET    /api/v1/production-batches/product/{productId} → Lotes por producto
  * GET    /api/v1/production-batches/{id}          → Obtener por ID
  */
@@ -59,6 +60,23 @@ public class ProductionBatchController {
             @Valid @RequestBody ProductionBatchRequest request) {
         ProductionBatchResponse response = service.createProductionBatch(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * Obtiene todos los lotes de producción.
+     * Ordenados por fecha de producción descendente (nuevo primero).
+     */
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'PRODUCTION_OP')")
+    // WHAT: Listado completo de lotes (GET /api/v1/production-batches)
+    // WHY: El frontend Flutter necesita listar todos los lotes para la pantalla de producción
+    @Operation(
+            summary = "Get all production batches",
+            description = "Retrieves all production batches ordered by production date descending (newest first). ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
+    )
+    @ApiResponse(responseCode = "200", description = "List of all production batches")
+    public ResponseEntity<List<ProductionBatchResponse>> getAllProductionBatches() {
+        return ResponseEntity.ok(service.getAllProductionBatches());
     }
 
     /**
