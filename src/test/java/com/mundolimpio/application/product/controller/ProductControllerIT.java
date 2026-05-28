@@ -3,13 +3,24 @@ package com.mundolimpio.application.product.controller;
 import com.mundolimpio.application.product.dto.ProductRequest;
 import com.mundolimpio.application.product.dto.ProductResponse;
 import com.mundolimpio.application.product.repository.ProductRepository;
+import com.mundolimpio.application.security.service.JwtService;
+import com.mundolimpio.application.user.domain.Role;
+import com.mundolimpio.application.user.domain.User;
+import com.mundolimpio.application.user.repository.UserRepository;
 import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -32,15 +43,73 @@ class ProductControllerIT extends AbstractIntegrationTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JwtService jwtService;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    /**
+     * Record interno para agrupar el contexto de un ADMIN autenticado.
+     *
+     * @param id    ID del usuario ADMIN en DB
+     * @param token JWT generado para ese ADMIN
+     */
+    private record AdminContext(Long id, String token) {}
+
+    /**
+     * Helper: crea un usuario ADMIN en DB y genera un JWT para el.
+     *
+     * QUÉ HACE: Persiste un User con Role.ADMIN, genera un JWT
+     * firmado usando JwtService, y retorna el ID + token.
+     *
+     * POR QUÉ este helper:
+     * - Los tests de escritura necesitan un ADMIN autenticado.
+     * - Centraliza la creacion para evitar duplicacion.
+     * - El password se hashea con BCrypt real (mismo que en produccion).
+     *
+     * @return AdminContext con ID del admin y su JWT
+     */
+    private AdminContext createAdminContext() {
+        User admin = new User("admin", "admin@mundolimpio.com",
+                passwordEncoder.encode("admin123"), Role.ADMIN);
+        admin = userRepository.save(admin);
+        String token = jwtService.generateToken(admin);
+        return new AdminContext(admin.getId(), token);
+    }
+
+    /**
+     * Helper: crea headers HTTP con token JWT y Content-Type JSON.
+     *
+     * @param token JWT del ADMIN autenticado
+     * @return HttpHeaders con Authorization Bearer y Content-Type application/json
+     */
+    private HttpHeaders authHeaders(String token) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
+
     @BeforeEach
     void setUp() {
+        // Configurar soporte para HTTP PATCH (HttpURLConnection no lo soporta)
+        RestTemplate rt = restTemplate.getRestTemplate();
+        rt.setRequestFactory(new HttpComponentsClientHttpRequestFactory());
+
+        userRepository.deleteAll();
         productRepository.deleteAll();
     }
 
     @Test
     void shouldCreateProductSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("DETERGENTE-001", "Detergente Multiusos 500ml", new BigDecimal("10.50"));
-        ResponseEntity<ProductResponse> response = restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
+        HttpEntity<ProductRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> response = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity, ProductResponse.class);
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -53,10 +122,13 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnConflictWhenSkuAlreadyExists() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("CLORO-001", "Cloro", new BigDecimal("8.00"));
-        restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
+        HttpEntity<ProductRequest> entity1 = new HttpEntity<>(request, authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity1, ProductResponse.class);
 
-        ResponseEntity<String> response = restTemplate.postForEntity("/api/v1/products", request, String.class);
+        HttpEntity<ProductRequest> entity2 = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity2, String.class);
 
         assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
         assertTrue(response.getBody().contains("PRODUCT_ALREADY_EXISTS"));
@@ -64,6 +136,7 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnBadRequestWhenValidationFails() {
+        AdminContext admin = createAdminContext();
         String invalidJson = """
                 {
                     "sku": "",
@@ -72,7 +145,8 @@ class ProductControllerIT extends AbstractIntegrationTest {
                 }
                 """;
 
-        ResponseEntity<String> response = restTemplate.postForEntity("/api/v1/products", invalidJson, String.class);
+        HttpEntity<String> entity = new HttpEntity<>(invalidJson, authHeaders(admin.token()));
+        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity, String.class);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertTrue(response.getBody().contains("VALIDATION_ERROR"));
@@ -80,8 +154,10 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnBadRequestForInvalidSkuPattern() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("detergente-001", "Detergente", new BigDecimal("10.00"));
-        ResponseEntity<String> response = restTemplate.postForEntity("/api/v1/products", request, String.class);
+        HttpEntity<ProductRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity, String.class);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertTrue(response.getBody().contains("VALIDATION_ERROR"));
@@ -90,8 +166,10 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnBadRequestForNegativePrice() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("PRODUCTO-001", "Producto", new BigDecimal("-5.00"));
-        ResponseEntity<String> response = restTemplate.postForEntity("/api/v1/products", request, String.class);
+        HttpEntity<ProductRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity, String.class);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertTrue(response.getBody().contains("VALIDATION_ERROR"));
@@ -99,8 +177,10 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldGetProductByIdSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest createRequest = new ProductRequest("JABON-001", "Jabón Antibacterial", new BigDecimal("5.25"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", createRequest, ProductResponse.class);
+        HttpEntity<ProductRequest> createEntity = new HttpEntity<>(createRequest, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> createResponse = restTemplate.exchange("/api/v1/products", HttpMethod.POST, createEntity, ProductResponse.class);
         Long productId = createResponse.getBody().id();
 
         ResponseEntity<ProductResponse> response = restTemplate.getForEntity("/api/v1/products/" + productId, ProductResponse.class);
@@ -113,8 +193,10 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldGetProductBySkuSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("DESINFECTANTE-001", "Desinfectante", new BigDecimal("7.50"));
-        restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
+        HttpEntity<ProductRequest> entity = new HttpEntity<>(request, authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity, ProductResponse.class);
 
         ResponseEntity<ProductResponse> response = restTemplate.getForEntity("/api/v1/products/sku/DESINFECTANTE-001", ProductResponse.class);
 
@@ -141,10 +223,13 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldGetAllActiveProductsSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest request1 = new ProductRequest("PROD-001", "Producto 1", new BigDecimal("10.00"));
         ProductRequest request2 = new ProductRequest("PROD-002", "Producto 2", new BigDecimal("20.00"));
-        restTemplate.postForEntity("/api/v1/products", request1, ProductResponse.class);
-        restTemplate.postForEntity("/api/v1/products", request2, ProductResponse.class);
+        HttpEntity<ProductRequest> entity1 = new HttpEntity<>(request1, authHeaders(admin.token()));
+        HttpEntity<ProductRequest> entity2 = new HttpEntity<>(request2, authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity1, ProductResponse.class);
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity2, ProductResponse.class);
 
         ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products", List.class);
 
@@ -155,14 +240,18 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldGetAllProductsIncludingInactive() {
+        AdminContext admin = createAdminContext();
         ProductRequest request1 = new ProductRequest("ACTIVE-001", "Activo", new BigDecimal("10.00"));
         ProductRequest request2 = new ProductRequest("INACTIVE-001", "Inactivo", new BigDecimal("20.00"));
 
-        restTemplate.postForEntity("/api/v1/products", request1, ProductResponse.class);
-        ResponseEntity<ProductResponse> response2 = restTemplate.postForEntity("/api/v1/products", request2, ProductResponse.class);
+        HttpEntity<ProductRequest> entity1 = new HttpEntity<>(request1, authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity1, ProductResponse.class);
+        HttpEntity<ProductRequest> entity2 = new HttpEntity<>(request2, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> response2 = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity2, ProductResponse.class);
         Long inactiveId = response2.getBody().id();
 
-        restTemplate.delete("/api/v1/products/" + inactiveId);
+        HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products/" + inactiveId, HttpMethod.DELETE, deleteEntity, Void.class);
         ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products/all", List.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -171,12 +260,15 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldUpdateProductSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest createRequest = new ProductRequest("UPDATE-001", "Original", new BigDecimal("15.00"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", createRequest, ProductResponse.class);
+        HttpEntity<ProductRequest> createEntity = new HttpEntity<>(createRequest, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> createResponse = restTemplate.exchange("/api/v1/products", HttpMethod.POST, createEntity, ProductResponse.class);
         Long productId = createResponse.getBody().id();
 
         ProductRequest updateRequest = new ProductRequest("UPDATE-002", "Actualizado", new BigDecimal("20.00"));
-        ResponseEntity<ProductResponse> response = restTemplate.exchange("/api/v1/products/" + productId, org.springframework.http.HttpMethod.PUT, new org.springframework.http.HttpEntity<>(updateRequest), ProductResponse.class);
+        HttpEntity<ProductRequest> updateEntity = new HttpEntity<>(updateRequest, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> response = restTemplate.exchange("/api/v1/products/" + productId, HttpMethod.PUT, updateEntity, ProductResponse.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -187,15 +279,19 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnConflictWhenUpdateSkuToExistingOne() {
+        AdminContext admin = createAdminContext();
         ProductRequest request1 = new ProductRequest("UNIQUE-001", "Producto 1", new BigDecimal("10.00"));
         ProductRequest request2 = new ProductRequest("UNIQUE-002", "Producto 2", new BigDecimal("20.00"));
 
-        restTemplate.postForEntity("/api/v1/products", request1, ProductResponse.class);
-        ResponseEntity<ProductResponse> response2 = restTemplate.postForEntity("/api/v1/products", request2, ProductResponse.class);
+        HttpEntity<ProductRequest> entity1 = new HttpEntity<>(request1, authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity1, ProductResponse.class);
+        HttpEntity<ProductRequest> entity2 = new HttpEntity<>(request2, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> response2 = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity2, ProductResponse.class);
         Long product2Id = response2.getBody().id();
 
         ProductRequest updateRequest = new ProductRequest("UNIQUE-001", "Producto 2 Actualizado", new BigDecimal("25.00"));
-        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products/" + product2Id, org.springframework.http.HttpMethod.PUT, new org.springframework.http.HttpEntity<>(updateRequest), String.class);
+        HttpEntity<ProductRequest> updateEntity = new HttpEntity<>(updateRequest, authHeaders(admin.token()));
+        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products/" + product2Id, HttpMethod.PUT, updateEntity, String.class);
 
         assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
         assertTrue(response.getBody().contains("PRODUCT_ALREADY_EXISTS"));
@@ -203,11 +299,14 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldSoftDeleteProductSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("DELETE-001", "Para borrar", new BigDecimal("10.00"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
+        HttpEntity<ProductRequest> createEntity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> createResponse = restTemplate.exchange("/api/v1/products", HttpMethod.POST, createEntity, ProductResponse.class);
         Long productId = createResponse.getBody().id();
 
-        ResponseEntity<Void> response = restTemplate.exchange("/api/v1/products/" + productId, org.springframework.http.HttpMethod.DELETE, null, Void.class);
+        HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
+        ResponseEntity<Void> response = restTemplate.exchange("/api/v1/products/" + productId, HttpMethod.DELETE, deleteEntity, Void.class);
 
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
         var productFromDb = productRepository.findById(productId);
@@ -217,14 +316,18 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldNotIncludeDeletedProductInActiveList() {
+        AdminContext admin = createAdminContext();
         ProductRequest request1 = new ProductRequest("ACTIVE-PROD", "Activo", new BigDecimal("10.00"));
         ProductRequest request2 = new ProductRequest("DELETE-PROD", "Será borrado", new BigDecimal("20.00"));
 
-        restTemplate.postForEntity("/api/v1/products", request1, ProductResponse.class);
-        ResponseEntity<ProductResponse> response2 = restTemplate.postForEntity("/api/v1/products", request2, ProductResponse.class);
+        HttpEntity<ProductRequest> entity1 = new HttpEntity<>(request1, authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity1, ProductResponse.class);
+        HttpEntity<ProductRequest> entity2 = new HttpEntity<>(request2, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> response2 = restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity2, ProductResponse.class);
         Long deleteId = response2.getBody().id();
 
-        restTemplate.delete("/api/v1/products/" + deleteId);
+        HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products/" + deleteId, HttpMethod.DELETE, deleteEntity, Void.class);
         ResponseEntity<List> allActiveResponse = restTemplate.getForEntity("/api/v1/products", List.class);
 
         assertEquals(1, allActiveResponse.getBody().size());
@@ -232,7 +335,9 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReturnNotFoundWhenDeletingNonExistentProduct() {
-        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products/999999", org.springframework.http.HttpMethod.DELETE, null, String.class);
+        AdminContext admin = createAdminContext();
+        HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
+        ResponseEntity<String> response = restTemplate.exchange("/api/v1/products/999999", HttpMethod.DELETE, deleteEntity, String.class);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         assertTrue(response.getBody().contains("PRODUCT_NOT_FOUND"));
@@ -240,12 +345,16 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldReactivateProductSuccessfully() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("REACTIV-001", "Para reactivar", new BigDecimal("10.00"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
+        HttpEntity<ProductRequest> createEntity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> createResponse = restTemplate.exchange("/api/v1/products", HttpMethod.POST, createEntity, ProductResponse.class);
         Long productId = createResponse.getBody().id();
 
-        restTemplate.delete("/api/v1/products/" + productId);
-        ResponseEntity<Void> response = restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", org.springframework.http.HttpMethod.PATCH, null, Void.class);
+        HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products/" + productId, HttpMethod.DELETE, deleteEntity, Void.class);
+        HttpEntity<Void> patchEntity = new HttpEntity<>(authHeaders(admin.token()));
+        ResponseEntity<Void> response = restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", HttpMethod.PATCH, patchEntity, Void.class);
 
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
         var productFromDb = productRepository.findById(productId);
@@ -255,12 +364,16 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldIncludeReactivatedProductInActiveList() {
+        AdminContext admin = createAdminContext();
         ProductRequest request = new ProductRequest("BACK-TO-ACTIVE", "Vuelve a ser activo", new BigDecimal("10.00"));
-        ResponseEntity<ProductResponse> createResponse = restTemplate.postForEntity("/api/v1/products", request, ProductResponse.class);
+        HttpEntity<ProductRequest> createEntity = new HttpEntity<>(request, authHeaders(admin.token()));
+        ResponseEntity<ProductResponse> createResponse = restTemplate.exchange("/api/v1/products", HttpMethod.POST, createEntity, ProductResponse.class);
         Long productId = createResponse.getBody().id();
 
-        restTemplate.delete("/api/v1/products/" + productId);
-        restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", org.springframework.http.HttpMethod.PATCH, null, Void.class);
+        HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products/" + productId, HttpMethod.DELETE, deleteEntity, Void.class);
+        HttpEntity<Void> patchEntity = new HttpEntity<>(authHeaders(admin.token()));
+        restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", HttpMethod.PATCH, patchEntity, Void.class);
 
         ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products", List.class);
 

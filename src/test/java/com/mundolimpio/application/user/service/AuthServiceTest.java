@@ -4,8 +4,10 @@ import com.mundolimpio.application.security.service.CustomUserDetailsService;
 import com.mundolimpio.application.security.service.JwtService;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
+import com.mundolimpio.application.user.dto.LoginRequest;
 import com.mundolimpio.application.user.dto.LoginResponse;
 import com.mundolimpio.application.user.dto.RefreshRequest;
+import com.mundolimpio.application.user.dto.RegisterRequest;
 import com.mundolimpio.application.user.exception.InvalidRefreshTokenException;
 import com.mundolimpio.application.user.repository.UserRepository;
 import io.jsonwebtoken.JwtException;
@@ -16,8 +18,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -75,7 +82,7 @@ class AuthServiceTest {
     void setUp() {
         // Creamos un User real (no mock) porque refresh() castea UserDetails a User
         // para obtener getRole() y getCreatedAt(). Un mock de UserDetails no funcionaría.
-        testUser = new User("testuser", "encoded-password", Role.OPERATOR);
+        testUser = new User("testuser", "testuser@mundolimpio.com", "encoded-password", Role.SALES_CLERK);
     }
 
     // ==================== TEST 1: Token válido → nuevo par ====================
@@ -110,12 +117,18 @@ class AuthServiceTest {
                 "El access token debe ser el nuevo generado");
         assertEquals("new-refresh-token", response.refreshToken(),
                 "El refresh token debe ser el nuevo generado");
-        assertEquals("OPERATOR", response.role(),
+        assertEquals("SALES_CLERK", response.role(),
                 "El rol debe coincidir con el del usuario");
         assertEquals("testuser", response.username(),
-                "El username debe coincidir con el del usuario");
+                "El username debe ser el raw username (display name): " + response.username());
+        assertEquals("testuser@mundolimpio.com", response.email(),
+                "El email debe coincidir con el email del usuario");
         assertNotNull(response.createdAt(),
                 "La fecha de creación no debe ser nula");
+        // WHAT: Verifica que el campo roles (multi-rol) viene poblado
+        assertNotNull(response.roles(), "roles no debe ser null");
+        assertTrue(response.roles().contains("SALES_CLERK"),
+                "roles debe contener SALES_CLERK: " + response.roles());
 
         // Verificamos que se llamaron TODAS las dependencias en el orden correcto
         verify(jwtService).extractUsername("valid-refresh-token");
@@ -234,5 +247,187 @@ class AuthServiceTest {
                 "Token expirado debe dar error INVALID");
         assertTrue(exception.getMessage().contains("no es válido"),
                 "El mensaje debe indicar que el token no es válido o expiró: " + exception.getMessage());
+    }
+
+    // ==================== TEST 5: Registro exitoso con email ====================
+
+    /**
+     * Test 5: register() con email válido devuelve LoginResponse con email + username.
+     *
+     * WHAT: Verifica que register() acepta email+password, persiste el usuario
+     * con username auto-generado, y devuelve LoginResponse incluyendo el campo email.
+     *
+     * WHY: El frontend Flutter envía email en RegisterRequest. El backend debe
+     * aceptar email como identificador primario y devolver ambos (email + username).
+     */
+    @Test
+    void register_withEmail_ReturnsLoginResponse() {
+        // Given: RegisterRequest con email (nuevo contrato)
+        RegisterRequest request = new RegisterRequest("test@mail.com", "password123");
+
+        when(userRepository.existsByEmail("test@mail.com")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
+        // El username auto-generado será "test" (prefijo del email)
+        when(userRepository.existsByUsername("test")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User u = invocation.getArgument(0);
+            // Simulamos que JPA asigna ID
+            u.setId(1L);
+            return u;
+        });
+        when(jwtService.generateToken(any(User.class))).thenReturn("access-token");
+        when(jwtService.generateToken(any(User.class), anyLong())).thenReturn("refresh-token");
+
+        // When
+        LoginResponse response = authService.register(request);
+
+        // Then: La respuesta contiene email + username
+        assertNotNull(response, "La respuesta no debe ser nula");
+        assertEquals("access-token", response.accessToken());
+        assertEquals("refresh-token", response.refreshToken());
+        // WHAT: register() asigna CUSTOMER como rol por defecto
+        assertEquals("CUSTOMER", response.role(),
+                "register() debe asignar role=CUSTOMER: " + response.role());
+        assertEquals("test@mail.com", response.email(),
+                "El campo email debe contener el email del usuario");
+        assertEquals("test", response.username(),
+                "El username debe ser el prefijo auto-generado desde el email");
+        assertNotNull(response.createdAt());
+        // WHAT: register() ahora asigna Role.CUSTOMER como default
+        assertNotNull(response.roles(), "roles no debe ser null");
+        assertTrue(response.roles().contains("CUSTOMER"),
+                "register() debe crear usuario con roles=[CUSTOMER]: " + response.roles());
+
+        // Verificar que se usaron las dependencias correctas
+        verify(userRepository).existsByEmail("test@mail.com");
+        verify(passwordEncoder).encode("password123");
+        verify(userRepository).existsByUsername("test");
+        verify(userRepository).save(any(User.class));
+        verify(jwtService).generateToken(any(User.class));
+        verify(jwtService).generateToken(any(User.class), anyLong());
+    }
+
+    // ==================== TEST 6: Email duplicado → 409 ====================
+
+    /**
+     * Test 6: register() lanza ResponseStatusException 409 cuando el email ya existe.
+     *
+     * WHAT: Verifica que el sistema rechaza registros duplicados por email.
+     * WHY: El email es el identificador único de autenticación. Dos usuarios
+     * no pueden compartir el mismo email.
+     */
+    @Test
+    void register_duplicateEmail_Throws409() {
+        // Given: un email que ya está registrado
+        RegisterRequest request = new RegisterRequest("existing@mail.com", "password123");
+
+        when(userRepository.existsByEmail("existing@mail.com")).thenReturn(true);
+
+        // When: intentamos registrar con el mismo email
+        // Then: debe lanzar ResponseStatusException con 409 CONFLICT
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> authService.register(request)
+        );
+
+        assertTrue(exception.getMessage().contains("Email already in use"),
+                "El mensaje debe indicar que el email ya está en uso: " + exception.getMessage());
+
+        // Verificar que NO se persiste nada
+        verify(userRepository, never()).save(any(User.class));
+        verify(jwtService, never()).generateToken(any(User.class));
+    }
+
+    // ==================== TEST 7: Username auto-generado ====================
+
+    /**
+     * Test 7: register() auto-genera username desde el prefijo del email.
+     *
+     * WHAT: Verifica que el username se genera automáticamente como el prefijo
+     * del email (antes del @), y que en caso de colisión se agrega un sufijo.
+     * WHY: El username es necesario para display/admin pero el usuario solo
+     * provee email. El sistema debe generarlo sin intervención humana.
+     */
+    @Test
+    void register_autoGeneratesUsername() {
+        // Given: email "juan@mail.com" → username base "juan"
+        // Pero "juan" ya existe → debe generar "juan-xxxx" (con sufijo aleatorio)
+        RegisterRequest request = new RegisterRequest("juan@mail.com", "password123");
+
+        when(userRepository.existsByEmail("juan@mail.com")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
+        // Simulamos colisión: "juan" ya existe (primer existsByUsername),
+        // pero el sufijo aleatorio no (segundo existsByUsername).
+        // Usamos thenReturn(true, false): true para el prefijo, false para el candidato aleatorio
+        when(userRepository.existsByUsername(anyString())).thenReturn(true, false);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(jwtService.generateToken(any(User.class))).thenReturn("access-token");
+        when(jwtService.generateToken(any(User.class), anyLong())).thenReturn("refresh-token");
+
+        // When
+        LoginResponse response = authService.register(request);
+
+        // Then: el username NO es "juan" (hubo colisión, se agregó sufijo)
+        assertNotNull(response);
+        assertNotEquals("juan", response.username(),
+                "El username NO debe ser 'juan' porque ya existe — debe tener sufijo");
+        assertTrue(response.username().startsWith("juan-"),
+                "El username debe empezar con 'juan-' (prefijo + guión): " + response.username());
+        assertEquals("juan@mail.com", response.email(),
+                "El email debe ser el provisto en el request");
+    }
+
+    // ==================== TEST 8: Login con email ====================
+
+    /**
+     * Test 8: login() con email válido devuelve LoginResponse con tokens y datos del usuario.
+     *
+     * WHAT: Verifica que login() autentica por email y devuelve una respuesta
+     * que incluye email, username, role, y tokens.
+     * WHY: El frontend envía email+password. Spring Security autentica con
+     * UsernamePasswordAuthenticationToken(email, password). El servicio debe
+     * buscar al usuario por email después de autenticar.
+     */
+    @Test
+    void login_withEmail_ReturnsLoginResponse() {
+        // Given: credenciales válidas por email
+        LoginRequest request = new LoginRequest("test@mail.com", "password123");
+
+        // authenticationManager.authenticate() no lanza excepción = credenciales válidas
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
+                .thenReturn(new UsernamePasswordAuthenticationToken("test@mail.com", "password123"));
+
+        User user = new User("test", "test@mail.com", "encoded-password", Role.SALES_CLERK);
+        user.setId(1L);
+        when(userRepository.findByEmail("test@mail.com")).thenReturn(Optional.of(user));
+        when(jwtService.generateToken(user)).thenReturn("access-token");
+        when(jwtService.generateToken(eq(user), anyLong())).thenReturn("refresh-token");
+
+        // When
+        LoginResponse response = authService.login(request);
+
+        // Then: respuesta completa con email + username
+        assertNotNull(response);
+        assertEquals("access-token", response.accessToken());
+        assertEquals("refresh-token", response.refreshToken());
+        assertEquals("SALES_CLERK", response.role());
+        assertEquals("test@mail.com", response.email(),
+                "El email en la respuesta debe coincidir con el del request");
+        assertEquals("test", response.username(),
+                "El username debe ser el display name del usuario");
+        assertNotNull(response.createdAt());
+        // WHAT: login response debe incluir la lista de roles
+        assertNotNull(response.roles(), "roles no debe ser null");
+        assertTrue(response.roles().contains("SALES_CLERK"),
+                "roles debe contener SALES_CLERK: " + response.roles());
+
+        // Verificar que el flujo de autenticación usó email
+        verify(authenticationManager).authenticate(
+                argThat(auth -> auth instanceof UsernamePasswordAuthenticationToken
+                        && "test@mail.com".equals(auth.getPrincipal())
+                        && "password123".equals(auth.getCredentials()))
+        );
+        verify(userRepository).findByEmail("test@mail.com");
+        verify(jwtService).generateToken(user);
     }
 }

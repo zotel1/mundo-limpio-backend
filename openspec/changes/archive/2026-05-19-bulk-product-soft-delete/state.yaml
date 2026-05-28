@@ -1,0 +1,54 @@
+# State: Convert BulkProduct to soft delete - ARCHIVED
+# Managed by: sdd-apply, sdd-verify, sdd-archive
+# See: openspec-convention.md for format
+# Archived: 2026-05-19
+
+phase: "ARCHIVED"
+progress: "SDD Cycle COMPLETE - All artifacts archived, spec synced to main"
+completed_tasks:
+  - "1.1 Create V6__Add_Active_To_Bulk_Products.sql migration"
+  - "1.2 Add active field to BulkProduct.java entity"
+  - "1.3 Add findByActiveTrue() to BulkProductRepository.java"
+  - "2.1 Add active field to BulkProductResponse.java"
+  - "2.2 Update BulkProductMapper.java (toEntity + toResponse)"
+  - "3.1 Add @Transactional + SLF4J Logger to BulkProductService"
+  - "3.2 Replace deleteBulkProduct with soft delete (findById → setActive(false) → save)"
+  - "3.3 Add reactivateBulkProduct method (findById → setActive(true) → save)"
+  - "3.4 Change getAllBulkProducts to filter by findByActiveTrue()"
+  - "3.5 Add getAllBulkProductsAdmin using findAll()"
+  - "4.1 Update DELETE endpoint docs to 'soft delete'"
+  - "4.2 Add PATCH /{id}/reactivate endpoint"
+  - "4.3 Add GET /all endpoint with @PreAuthorize(\"hasRole('ADMIN')\")"
+  - "4.4 Update controller Javadoc header"
+  - "4.5 Update shouldDeleteBulkProduct: verify active=false instead of existsById"
+  - "4.6 Modify shouldGetAllBulkProducts: filter test with active+inactive products"
+  - "4.7 Add shouldGetAllBulkProductsIncludingInactive: GET /all returns all"
+  - "4.8 Add shouldReactivateBulkProduct: soft-delete + PATCH reactivate + verify active=true"
+  - "4.9 Add shouldReturn404OnDeleteNonexistent: DELETE /999 → 404"
+  - "4.10 Add shouldReturn404OnReactivateNonexistent: PATCH /999/reactivate → 404"
+  - "5.1 Create BulkProductServiceTest.java with @ExtendWith(MockitoExtension.class)"
+  - "5.2 shouldSoftDeleteBulkProduct — verify active=false, row persists"
+  - "5.3 shouldReactivateBulkProduct — verify active=true"
+  - "5.4 shouldReactivateAlreadyActiveProduct — idempotent, no error"
+  - "5.5 shouldThrowNotFoundOnDeleteNonexistent — 404 on missing ID"
+  - "5.6 shouldThrowNotFoundOnReactivateNonexistent — 404 on missing ID"
+  - "5.7 shouldFilterInactiveFromGetAll — returns only active"
+  - "5.8 shouldReturnAllIncludingInactiveFromAdmin — returns all"
+  - "5.9 Full regression: 155/155 tests pass, 0 failures, BUILD SUCCESS"
+  - "5.10 Commit: fix(bulk-product): convert hard delete to soft delete with active flag"
+pending_tasks: []
+next_action: "SDD Cycle Complete - Ready for next change"
+strict_tdd: true
+artifact_store: "engram (with filesystem archive)"
+spec_synced: true
+spec_location: "openspec/specs/bulkproduct-soft-delete/spec.md"
+archive_location: "openspec/changes/archive/2026-05-19-bulk-product-soft-delete/"
+engram_archive_id: "sdd/bulk-product-soft-delete/archive-report"
+engram_observations:
+  proposal: 317
+  spec: 318
+  design: 319
+  tasks: 320
+  apply_progress: 326
+  verify_report: 331
+last_updated: "2026-05-19T22:48:00-03:00"

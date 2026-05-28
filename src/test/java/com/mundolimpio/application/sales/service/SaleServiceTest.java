@@ -7,7 +7,9 @@ import com.mundolimpio.application.product.domain.Product;
 import com.mundolimpio.application.product.repository.ProductRepository;
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
+import com.mundolimpio.application.sales.dto.SaleItemResponse;
 import com.mundolimpio.application.sales.dto.SaleRequest;
+import com.mundolimpio.application.sales.dto.SaleResponse;
 import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -108,7 +110,8 @@ class SaleServiceTest extends AbstractIntegrationTest {
             // Esperado si no hay datos — solo verificamos que el método se ejecuta
         }
         
-        assertThat(true).isTrue(); // Placeholder para fase GREEN
+        // Verificamos que el método se ejecuta sin excepciones inesperadas
+        // (IllegalArgumentException por falta de datos es esperado)
     }
 
     /**
@@ -129,7 +132,93 @@ class SaleServiceTest extends AbstractIntegrationTest {
             // Esperado si no hay datos — solo verificamos que el método se ejecuta
         }
         
-        assertThat(true).isTrue(); // Placeholder para fase GREEN
+        // Verificamos que el método se ejecuta sin excepciones inesperadas
+    }
+
+    // ==================== PRECIO DE VENTA REAL — CRIT-1 ====================
+    //
+    // POR QUÉ estos tests:
+    // CRIT-1 — El precio de venta puede ser distinto al costo del lote.
+    // unitPrice opcional en SaleRequest: si se envía, se usa ese precio;
+    // si no se envía (null), se usa el costo del lote como fallback (backward compatible).
+
+    /**
+     * CRIT-1 Test: unitPrice presente → unitPriceAtSale = unitPrice, unitCostAtSale = costo real.
+     * 
+     * QUE VERIFICA:
+     * - unitPrice=25.00 enviado en el request.
+     * - batch.unitCostAtProduction=15.00 (costo real del lote).
+     * - SaleItem.unitPriceAtSale debe ser 25.00 (el precio que el vendedor fijó).
+     * - SaleItem.unitCostAtSale debe ser 15.00 (el costo real, sin cambios).
+     * - Sale.totalAmount = 25.00 × quantity (no el costo).
+     */
+    @Test
+    void createSale_WithUnitPrice_ShouldUseUnitPriceAtSale() {
+        // Given: un producto y lote con costo 15.00
+        Product product = new Product(null, "SKU-CRIT-1", "Producto CRIT-1 Test", BigDecimal.TEN, true);
+        product = productRepository.save(product);
+
+        BulkProduct bulkProduct = new BulkProduct(
+                null, "Bulk CRIT-1", new BigDecimal("100"), new BigDecimal("5.0"), new BigDecimal("1.0"));
+        bulkProduct = bulkProductRepository.save(bulkProduct);
+
+        ProductionBatch batch = new ProductionBatch(
+                product, bulkProduct,
+                new BigDecimal("50"), new BigDecimal("50"),
+                new BigDecimal("15.0"), new BigDecimal("50"));
+        batch = productionBatchRepository.save(batch);
+
+        // When: creamos venta con unitPrice=25.00 (precio distinto al costo)
+        SaleRequest request = new SaleRequest(product.getId(), new BigDecimal("5"), new BigDecimal("25.00"));
+        SaleResponse response = saleService.createSale(request);
+
+        // Then: unitPriceAtSale debe ser 25.00, unitCostAtSale debe ser 15.00
+        assertThat(response.items()).hasSize(1);
+        SaleItemResponse item = response.items().get(0);
+        assertThat(item.unitPrice()).isEqualByComparingTo(new BigDecimal("25.00"));
+        assertThat(item.unitCost()).isEqualByComparingTo(new BigDecimal("15.00"));
+
+        // AND: totalAmount = 25.00 × 5 = 125.00 (precio de venta, no costo)
+        assertThat(response.totalAmount()).isEqualByComparingTo(new BigDecimal("125.00"));
+    }
+
+    /**
+     * CRIT-1 Test: unitPrice ausente (null) → unitPriceAtSale = costo del lote (backward compatible).
+     * 
+     * QUE VERIFICA:
+     * - SaleRequest usa el constructor de 2 parámetros (sin unitPrice).
+     * - SaleItem.unitPriceAtSale debe ser 15.00 (fallback al costo del lote).
+     * - SaleItem.unitCostAtSale debe ser 15.00 (costo real, sin cambios).
+     * - Sale.totalAmount = 15.00 × quantity (comportamiento backward compatible).
+     */
+    @Test
+    void createSale_WithoutUnitPrice_ShouldFallbackToCost() {
+        // Given: un producto y lote con costo 15.00
+        Product product = new Product(null, "SKU-CRIT-1B", "Producto CRIT-1 Fallback", BigDecimal.TEN, true);
+        product = productRepository.save(product);
+
+        BulkProduct bulkProduct = new BulkProduct(
+                null, "Bulk CRIT-1B", new BigDecimal("100"), new BigDecimal("5.0"), new BigDecimal("1.0"));
+        bulkProduct = bulkProductRepository.save(bulkProduct);
+
+        ProductionBatch batch = new ProductionBatch(
+                product, bulkProduct,
+                new BigDecimal("50"), new BigDecimal("50"),
+                new BigDecimal("15.0"), new BigDecimal("50"));
+        batch = productionBatchRepository.save(batch);
+
+        // When: creamos venta SIN unitPrice (constructor legacy de 2 parámetros)
+        SaleRequest request = new SaleRequest(product.getId(), new BigDecimal("5"));
+        SaleResponse response = saleService.createSale(request);
+
+        // Then: unitPriceAtSale = 15.00 (fallback al costo), unitCostAtSale = 15.00
+        assertThat(response.items()).hasSize(1);
+        SaleItemResponse item = response.items().get(0);
+        assertThat(item.unitPrice()).isEqualByComparingTo(new BigDecimal("15.00"));
+        assertThat(item.unitCost()).isEqualByComparingTo(new BigDecimal("15.00"));
+
+        // AND: totalAmount = 15.00 × 5 = 75.00 (backward compatible)
+        assertThat(response.totalAmount()).isEqualByComparingTo(new BigDecimal("75.00"));
     }
 
     // ==================== INVENTORY INTEGRATION TESTS ====================

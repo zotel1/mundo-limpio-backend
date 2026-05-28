@@ -10,12 +10,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 /**
  * ProductController expone los endpoints para la gestión de productos.
+ *
+ * Acceso: GET públicos (permitAll). POST/PUT/DELETE/PATCH requieren ADMIN o STOCK_MANAGER.
  *
  * Mapeo:
  * POST   /api/v1/products              → Crear producto
@@ -46,6 +49,8 @@ public class ProductController {
      * @return ProductResponse con el producto creado (201 CREATED)
      */
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: STOCK_MANAGER puede crear productos para gestion del catalogo
     @Operation(
             summary = "Create a new product",
             description = "Creates a new product with unique SKU. SKU must contain only uppercase letters, numbers, and hyphens."
@@ -146,6 +151,8 @@ public class ProductController {
      * @return ProductResponse con el producto actualizado (200 OK)
      */
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: STOCK_MANAGER puede actualizar productos
     @Operation(
             summary = "Update an existing product",
             description = "Updates all fields of a product. " +
@@ -178,6 +185,8 @@ public class ProductController {
      * @return 204 NO_CONTENT
      */
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: STOCK_MANAGER puede dar de baja productos (soft delete)
     @Operation(
             summary = "Delete a product (soft delete)",
             description = "Performs a soft delete: marks the product as inactive (active=false). " +
@@ -201,6 +210,8 @@ public class ProductController {
      * @return 204 NO_CONTENT
      */
     @PatchMapping("/{id}/reactivate")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: STOCK_MANAGER puede reactivar productos inactivos
     @Operation(
             summary = "Reactivate an inactive product",
             description = "Reverses a soft delete: marks the product as active (active=true). " +

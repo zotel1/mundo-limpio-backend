@@ -11,5 +11,5 @@ import java.math.BigDecimal;
  * @param conversionRatio Ratio de conversion
  *                          * */
 
-public record BulkProductResponse(Long id, String name, BigDecimal currentStockLiters, BigDecimal costPerLiter, BigDecimal conversionRatio)  {
+public record BulkProductResponse(Long id, String name, BigDecimal currentStockLiters, BigDecimal costPerLiter, BigDecimal conversionRatio, Boolean active)  {
 }

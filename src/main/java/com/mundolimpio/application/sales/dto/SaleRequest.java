@@ -22,6 +22,13 @@ import java.math.BigDecimal;
  *   Si productId o quantity son null, retorna 400 Bad Request sin ejecutar lógica.
  * - @Positive: quantity debe ser mayor a 0. No tiene sentido vender 0 o -5 unidades.
  *   Estas validaciones actúan como primera línea de defensa antes de la lógica de negocio.
+ * 
+ * DIFFERENCES con PR 1:
+ * - unitPrice es un campo opcional (@Positive pero no @NotNull).
+ *   Si no se envía (null), el sistema usa el costo del lote como precio de venta
+ *   (backward compatible con PR 1).
+ * - El constructor de 2 parámetros mantiene compatibilidad con tests existentes
+ *   que llaman new SaleRequest(productId, quantity) sin unitPrice.
  */
 public record SaleRequest(
     @NotNull(message = "Product ID cannot be null")
@@ -29,5 +36,18 @@ public record SaleRequest(
 
     @NotNull(message = "Quantity cannot be null")
     @Positive(message = "Quantity must be greater than zero")
-    BigDecimal quantity
-) {}
+    BigDecimal quantity,
+
+    @Positive(message = "Unit price must be positive")
+    BigDecimal unitPrice  // WHAT: Opcional. null = usar costo del lote como precio
+                         // WHY: CRIT-1 — el vendedor puede fijar un precio distinto al costo
+) {
+    /**
+     * Constructor de 2 parámetros para backward compatibility.
+     * Por qué: Todos los tests existentes usan new SaleRequest(id, quantity)
+     * sin unitPrice. Este constructor delega al canónico con unitPrice=null.
+     */
+    public SaleRequest(Long productId, BigDecimal quantity) {
+        this(productId, quantity, null);
+    }
+}

@@ -1,0 +1,141 @@
+### DEPRECATED — replaced by Render deploy pipeline (render.yaml)
+### This file was for Google Cloud Run Knative service spec. Kept for reference only.
+### See docs/deployment.md for current Render deployment instructions.
+
+# ============================================================
+# Cloud Run Service Spec (REFERENCIA — no se usa en el pipeline)
+# ============================================================
+# WHAT: Especificacion declarativa del servicio Cloud Run
+#       en formato Knative serving.knative.dev/v1.
+#
+# WHY: Documenta la configuracion exacta del servicio para
+#      referencia del equipo y para posibles despliegues
+#      declarativos futuros (gcloud run services replace).
+#      El pipeline real usa gcloud run deploy con flags
+#      inline en cloudbuild.yaml.
+#
+# HOW USAR (si se migra a deploy declarativo):
+#   gcloud run services replace service.yaml --region=us-central1
+#
+# DIFFERENCES con cloudbuild.yaml:
+#   - cloudbuild.yaml: pipeline CI/CD completo (build+push+deploy)
+#   - service.yaml:    solo la especificacion del servicio Cloud Run
+#                      (util para auditoria, documentacion, IaC futuro)
+# ============================================================
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: mundolimpio-api
+  annotations:
+    # WHAT: Limita el numero maximo de revisiones que Cloud Run mantiene
+    # WHY: Evita acumular revisiones viejas que consumen storage en
+    #      Artifact Registry (cada revision = una imagen de container).
+    #      5 revisiones es suficiente para rollback y debugging.
+    run.googleapis.com/ingress: all
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        # WHAT: Limite maximo de concurrencia por instancia
+        # WHY: 80 requests simultaneos por instancia es seguro para
+        #      Spring Boot con 512Mi y pool de 5 conexiones.
+        #      Con max-instances=3, maximo teorico: 240 requests simultaneos.
+        autoscaling.knative.dev/maxScale: "3"
+        # WHAT: Minimo de instancias (0 = serverless puro)
+        # WHY: Sin trafico = sin costo. Cloud Run escala a cero
+        #      automaticamente cuando no hay requests.
+        #      El cold start es ~3-5s con JRE alpine (aceptable para MVP).
+        autoscaling.knative.dev/minScale: "0"
+    spec:
+      # WHAT: Cuenta de servicio que ejecuta el contenedor
+      # WHY: La service account por defecto de Cloud Run tiene
+      #      permisos minimos. Para MVP es suficiente.
+      #      En produccion, crear una SA dedicada con solo los
+      #      permisos necesarios (principio de minimo privilegio).
+      serviceAccountName: default
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: us-central1-docker.pkg.dev/PROJECT_ID/mundolimpio-repo/mundolimpio-api:latest
+          ports:
+            - containerPort: 8080
+          # Recursos del contenedor
+          # WHAT: CPU=1 vCPU, Memoria=512Mi
+          # WHY: 512Mi es suficiente para Spring Boot con heap ~384Mi
+          #      (75% de 512Mi via -XX:MaxRAMPercentage=75.0).
+          #      CPU=1 maneja ~80 req/s con endpoints CRUD tipicos.
+          #      Para mas trafico, aumentar CPU y memoria proporcionalmente.
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # Variables de entorno
+          # WHAT: Todas las variables requeridas por application-prod.yml
+          # WHY: Configuradas aqui como referencia. En produccion,
+          #      configurar via Cloud Run UI o Secret Manager.
+          #      NUNCA poner valores reales de PGPASSWORD o JWT_SECRET_KEY
+          #      en este archivo (es codigo fuente versionado).
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            # Supabase PostgreSQL — connection string desde Supabase dashboard
+            - name: PGHOST
+              value: aws-0-us-east-1.pooler.supabase.com
+            - name: PGPORT
+              value: "6543"
+            - name: PGDATABASE
+              value: postgres
+            - name: PGUSER
+              value: postgres
+            # NOTA: PGPASSWORD debe configurarse via Cloud Run UI o Secret Manager
+            - name: PGPASSWORD
+              value: CHANGE_ME_VIA_CLOUD_RUN_UI
+            # JWT — clave secreta para firmar tokens
+            # NOTA: JWT_SECRET_KEY debe configurarse via Cloud Run UI o Secret Manager
+            - name: JWT_SECRET_KEY
+              value: CHANGE_ME_VIA_CLOUD_RUN_UI
+            # CORS — origenes permitidos (frontend URLs separadas por coma)
+            - name: APPLICATION_CORS_ALLOWED_ORIGINS
+              value: "*"
+          # Health check — startup probe
+          # WHAT: Verifica que el contenedor arranco correctamente
+          # WHY: Sin startup probe, Cloud Run envia trafico apenas
+          #      el puerto responde, pero la app puede estar en
+          #      medio de la inicializacion de Spring (Flyway, HikariCP).
+          #      Con startup probe, Cloud Run espera a que /actuator/health
+          #      devuelva 200 antes de enviar trafico real.
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Health check — liveness probe
+          # WHAT: Verifica que el contenedor sigue vivo periodicamente
+          # WHY: Si la app entra en deadlock o pierde conexion a la DB,
+          #      el health check falla y Cloud Run reinicia el contenedor.
+          #      periodSeconds=30 evita sobrecarga de health checks.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+# ============================================================
+# NOTAS DE OPERACION
+# ============================================================
+# 1. Para aplicar: gcloud run services replace service.yaml --region=us-central1
+# 2. PROJECT_ID se reemplaza con el ID real del proyecto GCP
+# 3. Las variables sensibles (PGPASSWORD, JWT_SECRET_KEY) NO deben
+#    estar en este archivo. Configurarlas via Cloud Run UI > Variables
+#    de entorno despues del primer deploy.
+# 4. El health check usa /actuator/health (Spring Boot Actuator).
+#    Este endpoint esta desprotegido en SecurityConfig para que
+#    Cloud Run pueda accederlo sin autenticacion.
+# 5. Para desarrollo local, usar docker-compose.yml en vez de este archivo.

@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -61,8 +62,10 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 "new-access-token",
                 "new-refresh-token",
                 "OPERATOR",
+                "testuser@mundolimpio.com",
                 "testuser",
-                Instant.now()
+                Instant.now(),
+                List.of("OPERATOR")
         );
 
         when(authService.refresh(any(RefreshRequest.class))).thenReturn(mockResponse);
@@ -76,6 +79,7 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.accessToken").value("new-access-token"))
                 .andExpect(jsonPath("$.refreshToken").value("new-refresh-token"))
                 .andExpect(jsonPath("$.role").value("OPERATOR"))
+                .andExpect(jsonPath("$.email").value("testuser@mundolimpio.com"))
                 .andExpect(jsonPath("$.username").value("testuser"));
     }
 

@@ -26,6 +26,25 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_db:5432/${DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      # Deshabilitar SSL para desarrollo local
+      # WHAT: Sobreescribe data-source-properties de application-prod.yml
+      # WHY: postgres:16-alpine no tiene SSL habilitado por defecto.
+      #      application-prod.yml define ssl=true + sslmode=require para
+      #      Supabase, pero en desarrollo local necesitamos deshabilitarlo.
+      # DIFFERENCES: En Cloud Run, SSL es obligatorio (Supabase lo requiere).
+      #              En desarrollo local, SSL es innecesario y el contenedor
+      #              no lo soporta. Estas variables de entorno tienen prioridad
+      #              sobre application-prod.yml para la conexion local.
+      SPRING_DATASOURCE_HIKARI_DATA_SOURCE_PROPERTIES_SSL: "false"
+      SPRING_DATASOURCE_HIKARI_DATA_SOURCE_PROPERTIES_SSLMODE: "disable"
+      # Deshabilitar schema-validation en desarrollo local
+      # WHAT: Cambia ddl-auto de validate a update para desarrollo local
+      # WHY: Hay diferencias entre el schema de Flyway y las entidades JPA
+      #      (ej: sale_items.quantity es NUMERIC en la DB pero INTEGER en
+      #      la entidad). En prod usamos validate (application-prod.yml)
+      #      para detectar estos problemas. En dev local, update permite
+      #      que la app arranque a pesar de estas diferencias.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
     depends_on:
       postgres_db:
         condition: service_healthy

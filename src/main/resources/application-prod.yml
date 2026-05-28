@@ -1,9 +1,35 @@
+server:
+  port: ${PORT:8080}
+
+# Management / Actuator endpoints para Cloud Run health probes
+# WHAT: Expone /actuator/health y /actuator/info para liveness/readiness de Cloud Run
+# WHY: Sin estos endpoints, Cloud Run no puede verificar si el contenedor está vivo
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
 spring:
   datasource:
     url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:mundolimpio}
     username: ${PGUSER:postgres}
     password: ${PGPASSWORD:}
     driver-class-name: org.postgresql.Driver
+    # Configuración de HikariCP para Supabase (PostgreSQL 16)
+    # WHAT: Pool size=5 ajustado al free tier de Supabase (max 15 conexiones totales)
+    #        + SSL via data-source-properties (sslmode=require) para conexión segura
+    # WHY: Supabase free tier limita a 15 conexiones directas. Con max-instances=3,
+    #      3×5=15, asegurando que nunca excedemos el límite.
+    #       SSL es obligatorio en Supabase — sin SSL la conexión es rechazada.
+    # DIFFERENCES: Docker Compose local sobrescribe spring.datasource.url via
+    #              SPRING_DATASOURCE_URL, por lo que estas propiedades HikariCP
+    #              (ssl, sslmode) no afectan el desarrollo local sin SSL.
+    hikari:
+      maximum-pool-size: 5
+      data-source-properties:
+        ssl: "true"
+        sslmode: require
 
   jpa:
     hibernate:
@@ -15,3 +41,15 @@ spring:
 
   flyway:
     enabled: true
+    # WHAT: baseline-on-migrate=true permite que Flyway no falle al encontrar
+    #       una DB de Supabase que ya tiene V1-V5 aplicadas en flyway_schema_history.
+    #       Flyway baselines automaticamente y solo aplica las migraciones pendientes.
+    # WHY: Sin esto, el primer deploy a Render fallaria porque Flyway encuentra
+    #      una DB no vacia sin su propia tabla de historial.
+    # DIFFERENCES: Solo aplica en prod. En dev/test, Flyway usa clean+create
+    #              desde cero con una DB vacia.
+    baseline-on-migrate: true
+    # WHAT: baseline-version=5 le dice a Flyway que todo hasta V5 inclusive ya existe.
+    # WHY: Supabase ya tiene V1-V5 aplicadas. V6 (email support) y V7 son las
+    #      unicas que necesitan ejecutarse en el primer deploy a Render.
+    baseline-version: 5

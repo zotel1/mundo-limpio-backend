@@ -18,7 +18,7 @@ import java.util.List;
 /**
  * ProductionBatchController expone los endpoints para la gestión de lotes de producción.
  *
- * Solo accesible por ADMIN.
+ * Accesible por ADMIN, STOCK_MANAGER (lectura) y PRODUCTION_OP (escritura/lectura).
  *
  * Mapeo:
  * POST   /api/v1/production-batches              → Crear lote (producción)
@@ -27,7 +27,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/v1/production-batches")
-@Tag(name = "Production Batches", description = "Endpoints para la gestión de lotes de producción (ADMIN only)")
+@Tag(name = "Production Batches", description = "Endpoints para la gestión de lotes de producción (ADMIN, STOCK_MANAGER, PRODUCTION_OP)")
 public class ProductionBatchController {
 
     private final ProductionBatchService service;
@@ -41,11 +41,13 @@ public class ProductionBatchController {
      * Toma materia prima, aplica conversión y genera el lote.
      */
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PRODUCTION_OP')")
+    // WHAT: Operador de produccion (PRODUCTION_OP) puede crear lotes
+    // WHY: El operador ejecuta la produccion y registra los lotes resultantes
     @Operation(
             summary = "Create a new production batch",
             description = "Creates a new production batch using raw materials. " +
-                    "Applies conversion ratio to calculate finished product. Only ADMIN can access."
+                    "Applies conversion ratio to calculate finished product. ADMIN and PRODUCTION_OP can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Production batch created successfully"),
@@ -63,10 +65,12 @@ public class ProductionBatchController {
      * Obtiene todos los lotes de un producto específico.
      */
     @GetMapping("/product/{productId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'PRODUCTION_OP')")
+    // WHAT: Consulta de lotes ampliada a STOCK_MANAGER y PRODUCTION_OP
+    // WHY: STOCK_MANAGER audita produccion; PRODUCTION_OP consulta su propio trabajo
     @Operation(
             summary = "Get batches by product",
-            description = "Retrieves all production batches for a specific product. Only ADMIN can access."
+            description = "Retrieves all production batches for a specific product. ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "List of batches"),
@@ -81,10 +85,11 @@ public class ProductionBatchController {
      * Obtiene un lote por su ID.
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'PRODUCTION_OP')")
+    // WHAT: Consulta de lote por ID ampliada (mismos roles que GET /product/{productId})
     @Operation(
             summary = "Get production batch by ID",
-            description = "Retrieves a production batch by its ID. Only ADMIN can access."
+            description = "Retrieves a production batch by its ID. ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Batch found"),

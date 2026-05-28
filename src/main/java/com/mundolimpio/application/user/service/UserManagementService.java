@@ -1,7 +1,9 @@
 package com.mundolimpio.application.user.service;
 
+import com.mundolimpio.application.audit.service.AuditLogService;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
+import com.mundolimpio.application.user.dto.ChangeRolesRequest;
 import com.mundolimpio.application.user.dto.UserResponse;
 import com.mundolimpio.application.user.exception.UserNotFoundException;
 import com.mundolimpio.application.user.mapper.UserMapper;
@@ -11,28 +13,26 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * Servicio principal para la gestión de usuarios por parte del ADMIN.
- *
- * QUÉ HACE: Provee operaciones administrativas CRUD-like sobre entidades
- * User: listar todos, obtener por ID, cambiar rol y resetear contraseña.
- * Está separado de AuthService (que solo maneja autenticación).
- *
- * POR QUÉ: Separamos la gestión de usuarios de la autenticación por SRP:
- * - AuthService: register, login, refresh (flujos públicos/de autenticación).
- * - UserManagementService: findAll, findById, changeRole, resetPassword
+ * Servicio principal para la gestion de usuarios por parte del ADMIN.
+ * <p>
+ * WHAT: Provee operaciones administrativas CRUD-like sobre entidades
+ * User: listar todos, obtener por ID, cambiar roles (multi-rol) y resetear contraseña.
+ * Separado de AuthService (que solo maneja autenticacion).
+ * <p>
+ * WHY: Separamos la gestion de usuarios de la autenticacion por SRP:
+ * - AuthService: register, login, refresh (flujos publicos/de autenticacion).
+ * - UserManagementService: findAll, findById, changeRoles, resetPassword
  *   (operaciones administrativas, solo ADMIN).
- * - Si mezcláramos ambas, el controlador tendría endpoints públicos y
- *   ADMIN-only mezclados, violando seguridad por capas.
- *
- * DIFERENCIA con AuthService:
- *   - AuthService usa AuthenticationManager y JwtService.
- *   - UserManagementService usa UserMapper y PasswordEncoder directamente.
- *   - AuthService maneja register con validación de duplicados.
- *   - UserManagementService maneja changeRole con autodemoción.
- *   - AuthService retorna LoginResponse (con tokens JWT).
- *   - UserManagementService retorna UserResponse (sin tokens).
+ * <p>
+ * DIFFERENCES: changeRole() reemplazado por changeRoles() que acepta Set<Role>
+ * via ChangeRolesRequest. Soporta multiples roles (UR-R2), validaciones
+ * ADMIN_EXCLUSIVE (UR-R3), SELF_ADMIN_REMOVAL (UR-R6), y auditoria (UR-R7).
+ * El viejo metodo changeRole() permanece como @Deprecated para que el
+ * controller migre sin romper compilacion.
  */
 @Service
 public class UserManagementService {
@@ -40,20 +40,24 @@ public class UserManagementService {
     private final UserRepository userRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     /**
-     * Constructor con inyección de dependencias.
+     * Constructor con inyeccion de dependencias.
      *
      * @param userRepository  Repositorio JPA para operaciones CRUD de User
      * @param userMapper      Mapper para convertir User → UserResponse
      * @param passwordEncoder Encriptador BCrypt para resetear contraseñas
+     * @param auditLogService Servicio de auditoria asincrono para registrar cambios de rol
      */
     public UserManagementService(UserRepository userRepository,
                                  UserMapper userMapper,
-                                 PasswordEncoder passwordEncoder) {
+                                 PasswordEncoder passwordEncoder,
+                                 AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
+        this.auditLogService = auditLogService;
     }
 
     // ======================== QUERY METHODS ========================
@@ -98,47 +102,116 @@ public class UserManagementService {
     // ======================== COMMAND METHODS ========================
 
     /**
-     * Cambia el rol de un usuario target.
+     * Cambia los roles de un usuario target reemplazando todos sus roles.
+     * <p>
+     * WHAT: Reemplaza el Set<Role> completo del usuario con los roles
+     * recibidos en el ChangeRolesRequest. Valida reglas de negocio
+     * (ADMIN exclusivo, no remover propio ADMIN, roles no vacios),
+     * persiste el cambio y registra auditoria asincrona (UR-R7).
+     * <p>
+     * WHY: El modelo RBAC multi-rol requiere reemplazo atomico del
+     * conjunto de roles, no adicion/remocion individual. Las validaciones
+     * garantizan UR-R3 (ADMIN no se combina) y UR-R6 (ADMIN no se quita
+     * a si mismo). La auditoria cumple UR-R7 incluso en intentos fallidos.
+     * <p>
+     * DIFFERENCES: Reemplaza al viejo changeRole(String) que solo aceptaba
+     * un rol. Ahora acepta Set<Role> tipado fuerte via ChangeRolesRequest.
      *
-     * QUE HACE:
-     * 1. Valida que newRole sea ADMIN u OPERATOR.
-     * 2. Valida que el ADMIN autenticado no se autodesgrade.
-     * 3. Busca al usuario target (lanza 404 si no existe).
-     * 4. Actualiza el rol y persiste.
-     *
-     * POR QUE @Transactional:
-     * - Aunque solo modificamos una entidad, @Transactional asegura
-     *   que la operación sea atómica. Si algo falla, se revierte.
-     *
-     * @param targetId      ID del usuario cuyo rol cambiar
-     * @param newRole       Nuevo rol como String ("ADMIN" u "OPERATOR")
-     * @param currentUserId ID del ADMIN que realiza la operación
-     * @return UserResponse con el nuevo rol asignado
-     * @throws IllegalArgumentException si el rol es inválido o es autodemoción
-     * @throws UserNotFoundException   si el usuario target no existe
+     * @param targetId      ID del usuario target cuyos roles cambiar
+     * @param request       DTO con el Set<Role> a asignar
+     * @param currentUserId ID del ADMIN que realiza la operacion
+     * @return UserResponse con los nuevos roles asignados
+     * @throws IllegalArgumentException si ADMIN se combina (ADMIN_EXCLUSIVE),
+     *                                  si los roles estan vacios (EMPTY_ROLES),
+     *                                  o si el admin se quita su propio ADMIN (SELF_ADMIN_REMOVAL)
+     * @throws UserNotFoundException    si el usuario target no existe
      */
+    @Transactional
+    public UserResponse changeRoles(Long targetId, ChangeRolesRequest request, Long currentUserId) {
+        Set<Role> newRoles = request.roles();
+
+        // PASO 1: Validar que el set de roles no este vacio
+        // WHAT: Al menos un rol es requerido (UR-R2: todo usuario debe tener al menos un rol)
+        if (newRoles == null || newRoles.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "EMPTY_ROLES: El conjunto de roles no puede estar vacio. Al menos un rol es requerido."
+            );
+        }
+
+        // PASO 2: Validar ADMIN exclusividad (UR-R3)
+        // WHAT: Si ADMIN esta presente, no puede haber otros roles en el set
+        if (newRoles.contains(Role.ADMIN) && newRoles.size() > 1) {
+            throw new IllegalArgumentException(
+                    "ADMIN_EXCLUSIVE: El rol ADMIN no puede combinarse con otros roles."
+            );
+        }
+
+        // PASO 3: Buscar usuario target
+        User user = userRepository.findById(targetId)
+                .orElseThrow(() -> new UserNotFoundException(targetId));
+
+        // PASO 4: Validar que el admin no se quite su propio ADMIN (UR-R6)
+        // WHAT: Si el admin se esta editando a si mismo y tiene ADMIN,
+        // ADMIN debe permanecer en el set. Evita lockout administrativo.
+        if (currentUserId.equals(targetId)
+                && user.getRoles().contains(Role.ADMIN)
+                && !newRoles.contains(Role.ADMIN)) {
+
+            // WHAT: Registrar auditoria incluso en intento fallido (UR-R7)
+            // WHY: Los intentos de auto-degradacion son eventos de seguridad relevantes
+            String oldRolesStr = rolesToString(user.getRoles());
+            String newRolesStr = rolesToString(newRoles);
+            auditLogService.logAsync(currentUserId, "ROLES_CHANGED", "USER",
+                    String.valueOf(targetId), oldRolesStr, newRolesStr);
+
+            throw new IllegalArgumentException(
+                    "SELF_ADMIN_REMOVAL: No puedes quitarte tu propio rol ADMIN. " +
+                    "Otro administrador debe realizar esta operacion."
+            );
+        }
+
+        // PASO 5: Guardar roles viejos para auditoria antes de reemplazar
+        Set<Role> oldRoles = Set.copyOf(user.getRoles());
+
+        // PASO 6: Reemplazar roles y persistir
+        // WHAT: setRoles() reemplaza el Set completo, no agrega
+        user.setRoles(newRoles);
+        userRepository.save(user);
+
+        // PASO 7: Registrar auditoria asincrona (UR-R7)
+        // WHAT: logAsync() usa @Async + REQUIRES_NEW → no bloquea y sobrevive rollback
+        auditLogService.logAsync(currentUserId, "ROLES_CHANGED", "USER",
+                String.valueOf(targetId), rolesToString(oldRoles), rolesToString(newRoles));
+
+        return userMapper.toResponse(user);
+    }
+
+    /**
+     * Cambia el rol de un usuario target (LEGACY — usar changeRoles).
+     *
+     * @deprecated Usar {@link #changeRoles(Long, ChangeRolesRequest, Long)} para multi-rol.
+     *             Este metodo se mantiene solo para que el controller pueda migrar sin
+     *             romper compilacion. Sera removido cuando el controller migre a /{id}/roles.
+     */
+    @Deprecated
     @Transactional
     public UserResponse changeRole(Long targetId, String newRole, Long currentUserId) {
         // PASO 1: Validar que el nuevo rol sea ADMIN u OPERATOR
-        // POR QUE validamos aquí y no en el DTO:
-        // - El DTO solo valida @NotBlank (estructural).
-        // - La validación de que el String corresponda a un enum Role
-        //   es una regla de negocio, no de formato.
-        // - Role.valueOf() lanzaría IllegalArgumentException genérica
-        //   sin el código de error específico que necesita el frontend.
         if (!"ADMIN".equals(newRole) && !"OPERATOR".equals(newRole)) {
-            throw new IllegalArgumentException("INVALID_ROLE: El rol '" + newRole + "' no es válido. Use ADMIN u OPERATOR.");
+            // WHAT: OPERATOR ya no existe como enum pero este metodo legacy aun lo acepta
+            // para no romper la API vieja durante la transicion
+            if (!"SALES_CLERK".equals(newRole) && !"STOCK_MANAGER".equals(newRole)
+                    && !"STOCK_OPERATOR".equals(newRole) && !"PRODUCTION_OP".equals(newRole)
+                    && !"ACCOUNTANT".equals(newRole)) {
+                throw new IllegalArgumentException("INVALID_ROLE: El rol '" + newRole + "' no es valido.");
+            }
         }
 
-        // PASO 2: Validar que no sea autodemoción
-        // POR QUE: Un ADMIN no puede autodesgradarse a OPERATOR porque
-        // perdería acceso a los endpoints de administración y nadie
-        // podría revertir el cambio. Si necesita cambiar su rol, debe
-        // hacerlo otro ADMIN.
+        // PASO 2: Validar que no sea autodemocion (legacy: self-demotion bloquea cualquier cambio propio)
         if (currentUserId.equals(targetId)) {
             throw new IllegalArgumentException(
                     "SELF_DEMOTION: No puedes cambiar tu propio rol. " +
-                    "Otro administrador debe realizar esta operación."
+                    "Otro administrador debe realizar esta operacion."
             );
         }
 
@@ -147,12 +220,28 @@ public class UserManagementService {
                 .orElseThrow(() -> new UserNotFoundException(targetId));
 
         // PASO 4: Actualizar el rol y persistir
-        // POR QUE Role.valueOf(): convertimos el String validado al enum.
-        // Como ya validamos que es "ADMIN" u "OPERATOR", esto nunca falla.
-        user.setRole(Role.valueOf(newRole));
+        // WHAT: Mapea OPERATOR→SALES_CLERK para backward compat
+        String mappedRole = "OPERATOR".equals(newRole) ? "SALES_CLERK" : newRole;
+        user.setRole(Role.valueOf(mappedRole));
         userRepository.save(user);
 
         return userMapper.toResponse(user);
+    }
+
+    /**
+     * Convierte un Set<Role> a String legible para auditoria.
+     * <p>
+     * WHAT: Formato "[ADMIN, STOCK_MANAGER]" para el campo old_value/new_value
+     * de la tabla audit_log. Ordenado alfabeticamente para consistencia.
+     */
+    private String rolesToString(Set<Role> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return "[]";
+        }
+        return roles.stream()
+                .sorted()
+                .map(Enum::name)
+                .collect(Collectors.joining(", ", "[", "]"));
     }
 
     /**

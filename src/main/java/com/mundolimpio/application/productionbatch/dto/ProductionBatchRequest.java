@@ -1,5 +1,8 @@
 package com.mundolimpio.application.productionbatch.dto;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
 import java.math.BigDecimal;
 
 /**
@@ -10,8 +13,8 @@ import java.math.BigDecimal;
  * @param rawQuantityUsed Cuánta materia prima se usó (ej: 20L)
  */
 public record ProductionBatchRequest(
-        Long productId,
-        Long bulkProductId,
-        BigDecimal rawQuantityUsed
+        @NotNull @Positive Long productId,
+        @NotNull @Positive Long bulkProductId,
+        @NotNull @Positive BigDecimal rawQuantityUsed
 ) {
 }

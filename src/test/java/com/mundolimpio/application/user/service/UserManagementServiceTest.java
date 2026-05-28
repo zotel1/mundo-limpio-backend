@@ -1,7 +1,9 @@
 package com.mundolimpio.application.user.service;
 
+import com.mundolimpio.application.audit.service.AuditLogService;
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
+import com.mundolimpio.application.user.dto.ChangeRolesRequest;
 import com.mundolimpio.application.user.dto.UserResponse;
 import com.mundolimpio.application.user.exception.UserNotFoundException;
 import com.mundolimpio.application.user.mapper.UserMapper;
@@ -17,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -50,6 +53,9 @@ class UserManagementServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private UserManagementService userManagementService;
 
@@ -66,15 +72,16 @@ class UserManagementServiceTest {
     void setUp() {
         // Creamos User reales (no mocks) porque el servicio los modifica
         // (setRole, setPassword) y necesita objetos concretos.
-        userAdmin = new User("admin", "encoded-password", Role.ADMIN);
+        userAdmin = new User("admin", "admin@mundolimpio.com", "encoded-password", Role.ADMIN);
         userAdmin.setId(1L);
 
-        userOperator = new User("operator", "encoded-password", Role.OPERATOR);
+        userOperator = new User("operator", "operator@mundolimpio.com", "encoded-password", Role.SALES_CLERK);
         userOperator.setId(2L);
 
         // Creamos UserResponse esperados para verify
-        userAdminResponse = new UserResponse(1L, "admin", "ADMIN", userAdmin.getCreatedAt());
-        userOperatorResponse = new UserResponse(2L, "operator", "OPERATOR", userOperator.getCreatedAt());
+        // WHAT: Agregamos List<String> roles (6to parametro) requerido por el nuevo UserResponse multi-rol
+        userAdminResponse = new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", userAdmin.getCreatedAt(), List.of("ADMIN"));
+        userOperatorResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", userOperator.getCreatedAt(), List.of("SALES_CLERK"));
     }
 
     // ==================== FIND ALL TESTS ====================
@@ -103,10 +110,12 @@ class UserManagementServiceTest {
         assertEquals(2, result.size(), "Debe haber 2 usuarios");
         assertEquals(1L, result.get(0).id());
         assertEquals("admin", result.get(0).username());
+        assertEquals("admin@mundolimpio.com", result.get(0).email());
         assertEquals("ADMIN", result.get(0).role());
         assertEquals(2L, result.get(1).id());
         assertEquals("operator", result.get(1).username());
-        assertEquals("OPERATOR", result.get(1).role());
+        assertEquals("operator@mundolimpio.com", result.get(1).email());
+        assertEquals("SALES_CLERK", result.get(1).role());
 
         verify(userRepository).findAll();
         verify(userMapper).toResponse(userAdmin);
@@ -162,6 +171,7 @@ class UserManagementServiceTest {
         assertNotNull(result);
         assertEquals(1L, result.id());
         assertEquals("admin", result.username());
+        assertEquals("admin@mundolimpio.com", result.email());
         assertEquals("ADMIN", result.role());
         assertNotNull(result.createdAt());
 
@@ -198,129 +208,215 @@ class UserManagementServiceTest {
         verifyNoInteractions(userMapper);
     }
 
-    // ==================== CHANGE ROLE TESTS ====================
+    // ==================== CHANGE ROLES TESTS ====================
 
     /**
-     * Test 5: changeRole con datos válidos cambia el rol y retorna UserResponse.
-     *
-     * QUE VERIFICA:
-     * - Se valida que el nuevo rol es "ADMIN" (válido).
-     * - Se valida que currentUserId != targetId (no es autodemoción).
-     * - userRepository.findById() encuentra al usuario target.
-     * - Se actualiza el rol del usuario a ADMIN.
-     * - userRepository.save() persiste el cambio.
-     * - Se retorna UserResponse con el nuevo rol.
+     * Test 5: changeRoles con datos validos asigna roles, persiste y retorna UserResponse.
+     * <p>
+     * WHAT: Admin asigna roles STOCK_MANAGER y SALES_CLERK a otro usuario.
+     * Verifica que se reemplazan todos los roles, se persiste, se retorna
+     * la respuesta mapeada y se registra auditoria.
      */
     @Test
-    void changeRole_ValidRequest_ChangesRoleAndReturnsResponse() {
-        // Given: un usuario OPERATOR, targetId=2, currentUserId=1
+    void changeRoles_ValidRequest_AssignsRolesAndReturnsResponse() {
+        // Given: admin (id=1) asigna roles a operator (id=2)
         Long targetId = 2L;
-        String newRole = "ADMIN";
         Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(
+                Set.of(Role.STOCK_MANAGER, Role.SALES_CLERK));
 
         when(userRepository.findById(targetId)).thenReturn(Optional.of(userOperator));
         when(userRepository.save(userOperator)).thenReturn(userOperator);
         when(userMapper.toResponse(userOperator)).thenReturn(
-                new UserResponse(2L, "operator", "ADMIN", userOperator.getCreatedAt())
+                new UserResponse(2L, "operator", "operator@mundolimpio.com",
+                        "STOCK_MANAGER", userOperator.getCreatedAt(),
+                        List.of("STOCK_MANAGER", "SALES_CLERK"))
         );
 
-        // When: cambiamos el rol
-        UserResponse result = userManagementService.changeRole(targetId, newRole, currentUserId);
+        // When: admin cambia los roles del usuario target
+        UserResponse result = userManagementService.changeRoles(targetId, request, currentUserId);
 
-        // Then: el rol debe ser ADMIN
+        // Then: roles reemplazados, respuesta correcta, auditoria registrada
         assertNotNull(result);
-        assertEquals("ADMIN", result.role(), "El rol debe haber cambiado a ADMIN");
-        assertEquals(Role.ADMIN, userOperator.getRole(), "La entidad debe tener el nuevo rol ADMIN");
+        assertEquals("STOCK_MANAGER", result.role(), "role deprecated debe ser el primer rol");
+        assertEquals(Set.of(Role.STOCK_MANAGER, Role.SALES_CLERK),
+                userOperator.getRoles(), "La entidad debe tener los nuevos roles");
+        assertEquals("operator@mundolimpio.com", result.email());
 
         verify(userRepository).findById(targetId);
         verify(userRepository).save(userOperator);
         verify(userMapper).toResponse(userOperator);
+        // WHAT: verificar que se registro auditoria con accion ROLES_CHANGED
+        verify(auditLogService).logAsync(eq(currentUserId), eq("ROLES_CHANGED"),
+                eq("USER"), eq(String.valueOf(targetId)), anyString(), anyString());
     }
 
     /**
-     * Test 6: changeRole intentando autodemoción lanza IllegalArgumentException.
-     *
-     * QUE VERIFICA:
-     * - Cuando currentUserId == targetId, se lanza SELF_DEMOTION.
-     * - userRepository.findById() NO es llamado (la validación es previa).
-     * - userRepository.save() NO es llamado.
+     * Test 6: changeRoles con ADMIN combinado con otro rol lanza IAE (UR-R3).
+     * <p>
+     * WHAT: ADMIN no puede combinarse con otros roles. Si el set incluye ADMIN
+     * y algun otro rol, la validacion temprana lanza IllegalArgumentException
+     * con codigo ADMIN_EXCLUSIVE.
      */
     @Test
-    void changeRole_SelfDemotion_ThrowsIllegalArgumentException() {
-        // Given: targetId = currentUserId (autodemoción)
-        Long targetId = 1L;
-        String newRole = "OPERATOR";
-        Long currentUserId = 1L;
-
-        // When: cambiamos el rol → Then: debe lanzar excepción
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> userManagementService.changeRole(targetId, newRole, currentUserId)
-        );
-
-        // Verificar que el mensaje contiene SELF_DEMOTION
-        assertTrue(exception.getMessage().contains("SELF_DEMOTION"),
-                "El mensaje debe indicar SELF_DEMOTION");
-
-        // Verificar que NO se consultó ni persistió nada
-        verifyNoInteractions(userRepository, userMapper);
-    }
-
-    /**
-     * Test 7: changeRole con rol inválido lanza IllegalArgumentException.
-     *
-     * QUE VERIFICA:
-     * - Cuando newRole no es ADMIN ni OPERATOR, se lanza INVALID_ROLE.
-     * - userRepository.findById() NO es llamado.
-     */
-    @Test
-    void changeRole_InvalidRole_ThrowsIllegalArgumentException() {
-        // Given: un rol que no existe
+    void changeRoles_AdminWithOtherRoles_ThrowsIllegalArgumentException() {
+        // Given: intento de asignar ADMIN + SALES_CLERK (viola UR-R3)
         Long targetId = 2L;
-        String newRole = "INVALID";
         Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(
+                Set.of(Role.ADMIN, Role.SALES_CLERK));
 
-        // When: cambiamos el rol → Then: debe lanzar excepción
+        // When/Then: lanza IAE con ADMIN_EXCLUSIVE antes de tocar repositorio
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> userManagementService.changeRole(targetId, newRole, currentUserId)
+                () -> userManagementService.changeRoles(targetId, request, currentUserId)
         );
 
-        // Verificar que el mensaje contiene INVALID_ROLE
-        assertTrue(exception.getMessage().contains("INVALID_ROLE"),
-                "El mensaje debe indicar INVALID_ROLE");
-
-        verifyNoInteractions(userRepository, userMapper);
+        assertTrue(exception.getMessage().contains("ADMIN_EXCLUSIVE"),
+                "El mensaje debe contener ADMIN_EXCLUSIVE: " + exception.getMessage());
+        verifyNoInteractions(userRepository, userMapper, auditLogService);
     }
 
     /**
-     * Test 8: changeRole con usuario target inexistente lanza UserNotFoundException.
-     *
-     * QUE VERIFICA:
-     * - La validación de rol pasa (rol válido).
-     * - La validación de autodemoción pasa (distintos IDs).
-     * - userRepository.findById() retorna Optional.empty().
-     * - Se lanza UserNotFoundException.
+     * Test 7: changeRoles con ADMIN solo es valido (UR-R3 triangulacion).
+     * <p>
+     * WHAT: Asignar solo ADMIN no viola UR-R3. Verifica que el caso borde
+     * (ADMIN solo) pasa la validacion y actualiza correctamente.
      */
     @Test
-    void changeRole_NonExistingTarget_ThrowsUserNotFoundException() {
-        // Given: target que no existe
-        Long targetId = 99L;
-        String newRole = "ADMIN";
+    void changeRoles_AdminAlone_Succeeds() {
+        // Given: asignar solo ADMIN a otro usuario
+        Long targetId = 2L;
         Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.ADMIN));
+
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(userOperator));
+        when(userRepository.save(userOperator)).thenReturn(userOperator);
+        when(userMapper.toResponse(userOperator)).thenReturn(
+                new UserResponse(2L, "operator", "operator@mundolimpio.com",
+                        "ADMIN", userOperator.getCreatedAt(), List.of("ADMIN"))
+        );
+
+        // When
+        UserResponse result = userManagementService.changeRoles(targetId, request, currentUserId);
+
+        // Then: ADMIN solo es valido, se asigna correctamente
+        assertEquals("ADMIN", result.role());
+        assertEquals(Set.of(Role.ADMIN), userOperator.getRoles());
+        verify(auditLogService).logAsync(eq(currentUserId), eq("ROLES_CHANGED"),
+                eq("USER"), eq(String.valueOf(targetId)), anyString(), anyString());
+    }
+
+    /**
+     * Test 8: changeRoles con set vacio lanza IAE (EMPTY_ROLES).
+     * <p>
+     * WHAT: Al menos un rol es requerido. Set vacio es rechazado con validacion
+     * temprana antes de consultar el repositorio.
+     */
+    @Test
+    void changeRoles_EmptyRoles_ThrowsIllegalArgumentException() {
+        // Given: request con roles vacio
+        Long targetId = 2L;
+        Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of());
+
+        // When/Then: lanza IAE con EMPTY_ROLES
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> userManagementService.changeRoles(targetId, request, currentUserId)
+        );
+
+        assertTrue(exception.getMessage().contains("EMPTY_ROLES"),
+                "El mensaje debe contener EMPTY_ROLES: " + exception.getMessage());
+        verifyNoInteractions(userRepository, userMapper, auditLogService);
+    }
+
+    /**
+     * Test 9: changeRoles con auto-remocion de ADMIN lanza IAE (UR-R6).
+     * <p>
+     * WHAT: Un ADMIN no puede quitarse su propio rol ADMIN. Si targetId ==
+     * currentUserId y el usuario tiene ADMIN pero ADMIN no esta en el nuevo
+     * set, se lanza SELF_ADMIN_REMOVAL.
+     */
+    @Test
+    void changeRoles_SelfAdminRemoval_ThrowsIllegalArgumentException() {
+        // Given: admin intenta quitarse su propio ADMIN (asignarse solo SALES_CLERK)
+        Long targetId = 1L;
+        Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.SALES_CLERK));
+
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(userAdmin));
+
+        // When/Then: lanza IAE con SELF_ADMIN_REMOVAL
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> userManagementService.changeRoles(targetId, request, currentUserId)
+        );
+
+        assertTrue(exception.getMessage().contains("SELF_ADMIN_REMOVAL"),
+                "El mensaje debe contener SELF_ADMIN_REMOVAL: " + exception.getMessage());
+        // WHAT: se debe registrar auditoria incluso en intento fallido (UR-R7)
+        verify(auditLogService).logAsync(eq(currentUserId), eq("ROLES_CHANGED"),
+                eq("USER"), eq(String.valueOf(targetId)), anyString(), anyString());
+        verify(userRepository, never()).save(any());
+    }
+
+    /**
+     * Test 10: changeRoles manteniendo ADMIN en self es valido (UR-R6 triangulacion).
+     * <p>
+     * WHAT: Un ADMIN puede reasignarse solo ADMIN (sin combinarlo con otros roles
+     * por UR-R3). Verifica que cuando ADMIN permanece solo en el set, la operacion
+     * es exitosa (no se bloquea por SELF_ADMIN_REMOVAL).
+     */
+    @Test
+    void changeRoles_SelfKeepAdmin_Succeeds() {
+        // Given: admin se reasigna solo ADMIN (UR-R3: ADMIN no se combina)
+        Long targetId = 1L;
+        Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.ADMIN));
+
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(userAdmin));
+        when(userRepository.save(userAdmin)).thenReturn(userAdmin);
+        when(userMapper.toResponse(userAdmin)).thenReturn(userAdminResponse);
+
+        // When
+        UserResponse result = userManagementService.changeRoles(targetId, request, currentUserId);
+
+        // Then: ADMIN solo permanece, operacion exitosa
+        assertNotNull(result);
+        assertEquals("ADMIN", result.role());
+        assertTrue(userAdmin.getRoles().contains(Role.ADMIN),
+                "ADMIN debe permanecer en los roles");
+        assertEquals(1, userAdmin.getRoles().size(),
+                "Solo ADMIN, sin otros roles por UR-R3");
+        verify(auditLogService).logAsync(eq(currentUserId), eq("ROLES_CHANGED"),
+                eq("USER"), eq(String.valueOf(targetId)), anyString(), anyString());
+    }
+
+    /**
+     * Test 11: changeRoles con usuario target inexistente lanza UserNotFoundException.
+     * <p>
+     * WHAT: Si el usuario target no existe, se lanza UserNotFoundException
+     * despues de las validaciones tempranas (roles, self-guard).
+     */
+    @Test
+    void changeRoles_NonExistingTarget_ThrowsUserNotFoundException() {
+        // Given: target que no existe en BD
+        Long targetId = 99L;
+        Long currentUserId = 1L;
+        ChangeRolesRequest request = new ChangeRolesRequest(Set.of(Role.SALES_CLERK));
 
         when(userRepository.findById(targetId)).thenReturn(Optional.empty());
 
-        // When: cambiamos el rol → Then: debe lanzar excepción
+        // When/Then: lanza UserNotFoundException
         UserNotFoundException exception = assertThrows(
                 UserNotFoundException.class,
-                () -> userManagementService.changeRole(targetId, newRole, currentUserId)
+                () -> userManagementService.changeRoles(targetId, request, currentUserId)
         );
 
         assertTrue(exception.getMessage().contains(String.valueOf(targetId)));
-
         verify(userRepository).findById(targetId);
-        verifyNoInteractions(userMapper);
+        verifyNoInteractions(userMapper, auditLogService);
     }
 
     // ==================== RESET PASSWORD TESTS ====================
@@ -353,6 +449,8 @@ class UserManagementServiceTest {
         // Then: la contraseña debe estar encriptada y el usuario guardado
         assertNotNull(result);
         assertEquals(2L, result.id());
+        assertEquals("operator@mundolimpio.com", result.email(),
+                "El email debe estar presente en la respuesta");
         assertEquals(encodedPassword, userOperator.getPassword(),
                 "La contraseña debe estar encriptada con BCrypt");
 

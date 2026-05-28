@@ -1,31 +1,33 @@
 package com.mundolimpio.application.user.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * DTO de respuesta para consultas de usuario.
+ * <p>
+ * WHAT: Agrega el campo `roles` (List<String>) con todos los roles del usuario
+ * y mantiene el campo `role` (String) como primer rol para backward compatibility.
+ * WHY: El modelo RBAC ahora soporta multiples roles (UR-R2). El cliente recibe
+ * tanto la lista completa de roles como el rol legacy para transicion gradual.
+ * DIFFERENCES: Antes tenia 5 campos; ahora 6 con `roles` al final.
+ * El campo `role` queda como @Deprecated — el cliente debe migrar a usar `roles`.
+ * <p>
+ * NOTA: NO expone la contraseña (es informacion sensible).
  *
- * QUÉ HACE: Expone los datos públicos de un usuario: su ID, username,
- * rol (como String) y fecha de creación. NO expone la contraseña
- * (es información sensible).
- *
- * POR QUÉ: Usamos un record de Java para garantizar inmutabilidad
- * y reducir boilerplate (constructor, getters, equals, hashCode, toString
- * se generan automáticamente). Sigue el patrón de InventoryResponse.
- *
- * DIFERENCIA con InventoryResponse:
- *   - InventoryResponse expone datos de stock (productId, currentStock).
- *   - UserResponse expone datos de usuario (username, role, createdAt).
- *   - Ambos son records inmutables que no exponen datos sensibles.
- *
- * @param id        Identificador único del usuario
- * @param username  Nombre de usuario (login)
- * @param role      Rol del usuario como String (ADMIN u OPERATOR)
- * @param createdAt Momento en que se creó el usuario
+ * @param id        Identificador unico del usuario
+ * @param username  Nombre de usuario (display name auto-generado)
+ * @param email     Email del usuario (identificador de autenticacion)
+ * @param role      Primer rol como String (deprecated, usar roles)
+ * @param createdAt Momento en que se creo el usuario
+ * @param roles     Lista de todos los roles del usuario como String
  */
 public record UserResponse(
         Long id,
         String username,
+        String email,
+        @Deprecated
         String role,
-        Instant createdAt
+        Instant createdAt,
+        List<String> roles
 ) {}

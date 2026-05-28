@@ -1,0 +1,185 @@
+### DEPRECATED — replaced by Render deploy pipeline (render.yaml + render-deploy.yml)
+### This file was for Google Cloud Run. Kept for reference only.
+### Last active: never (trigger was configured but never connected to production).
+### See docs/deployment.md for current Render deployment instructions.
+
+# ============================================================
+# Cloud Build Pipeline — MundoLimpio Backend
+# ============================================================
+# WHAT: Pipeline de CI/CD que construye, publica y despliega
+#       la API de MundoLimpio en Google Cloud Run.
+#
+# WHY: Automatizar el deploy continuo desde el repositorio Git.
+#      Cada push a la rama configurada en el trigger de Cloud Build
+#      ejecuta este pipeline: build de Docker, push a Artifact
+#      Registry, y deploy a Cloud Run como servicio serverless.
+#
+# HOW: Tres etapas secuenciales:
+#      1. docker build  → construye la imagen con el Dockerfile
+#      2. docker push    → publica en Artifact Registry
+#      3. gcloud run deploy → despliega en Cloud Run gestionado
+#
+# DIFFERENCES con deploy manual:
+#      - Manual: gcloud commands uno por uno, propenso a errores
+#      - Pipeline: automatizado, repetible, con trazabilidad del SHA
+#      - Tag de imagen = SHA del commit (trazabilidad completa)
+# ============================================================
+
+steps:
+  # ----------------------------------------------------------
+  # Etapa 1: Construir la imagen Docker
+  # ----------------------------------------------------------
+  # WHAT: docker build usando el Dockerfile multi-stage
+  #       (Maven builder + JRE alpine runtime)
+  # WHY: La imagen se taggea con el SHA corto del commit para
+  #      trazabilidad — cada deploy es trazable al commit exacto.
+  #      El tag incluye la ruta completa de Artifact Registry.
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '$_AR_HOST/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$SHORT_SHA'
+      - '.'
+
+  # ----------------------------------------------------------
+  # Etapa 2: Publicar la imagen en Artifact Registry
+  # ----------------------------------------------------------
+  # WHAT: docker push a Artifact Registry (us-central1)
+  # WHY: Artifact Registry es el registro de contenedores de GCP,
+  #      integrado con Cloud Run. La imagen debe estar en AR
+  #      para que Cloud Run pueda desplegarla.
+  # DIFFERENCES: No usamos Docker Hub — AR tiene menor latencia
+  #      (misma region us-central1) y no tiene rate limits.
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '$_AR_HOST/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$SHORT_SHA'
+
+  # ----------------------------------------------------------
+  # Etapa 3: Desplegar en Cloud Run
+  # ----------------------------------------------------------
+  # WHAT: gcloud run deploy con la imagen recien publicada
+  # WHY: Un solo comando actualiza el servicio Cloud Run con
+  #      la nueva revision. Cloud Run maneja el traffic shifting
+  #      (redirige trafico gradualmente a la nueva revision).
+  #
+  # RECURSOS:
+  #   CPU=1, Memoria=512Mi — suficiente para Spring Boot con
+  #   JVM heap ~384Mi (75% de 512Mi, configurado en Dockerfile).
+  #
+  # ESCALADO:
+  #   min-instances=0 → sin trafico = sin costo (serverless real)
+  #   max-instances=3 → 3×5 conexiones pool = 15 (limite Supabase free tier)
+  #
+  # CONCURRENCIA:
+  #   concurrency=80 → hasta 80 requests simultaneos por instancia
+  #   timeout=300s → 5 minutos maximo por request (cold start incluido)
+  #
+  # SEGURIDAD:
+  #   --allow-unauthenticated → API publica (protegida por JWT internamente)
+  #   Para produccion real, evaluar si Cloud Armor o IAP es necesario.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '$_SERVICE_NAME'
+      - '--image=$_AR_HOST/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$SHORT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--cpu=1'
+      - '--memory=512Mi'
+      - '--concurrency=80'
+      - '--timeout=300s'
+      - '--min-instances=0'
+      - '--max-instances=3'
+      - '--port=8080'
+      - '--allow-unauthenticated'
+      # Variables de entorno para la aplicacion
+      # WHAT: --update-env-vars con todas las variables necesarias
+      #       para conectar a Supabase y configurar seguridad.
+      # WHY: Un solo flag con todas las variables evita que
+      #      multiples --set-env-vars se sobrescriban entre si.
+      #      --update-env-vars NO borra variables existentes
+      #      (a diferencia de --set-env-vars que limpia todo).
+      # DIFFERENCES: Antes usabamos --set-env-vars pero multiples
+      #      flags se sobrescriben; --update-env-vars con un solo
+      #      flag es mas seguro y preserva variables manuales.
+      - >-
+        --update-env-vars=
+        SPRING_PROFILES_ACTIVE=prod,
+        PGHOST=$_PGHOST,
+        PGPORT=$_PGPORT,
+        PGDATABASE=$_PGDATABASE,
+        PGUSER=$_PGUSER,
+        PGPASSWORD=$_PGPASSWORD,
+        JWT_SECRET_KEY=$_JWT_SECRET_KEY,
+        APPLICATION_CORS_ALLOWED_ORIGINS=$_CORS_ORIGINS
+
+# ============================================================
+# Variables de sustitucion
+# ============================================================
+# WHAT: Valores por defecto y documentacion de variables
+#       que el trigger de Cloud Build debe sobrescribir.
+# WHY: Las variables $_ son configuradas en el trigger de
+#      Cloud Build, no en el repositorio. Los valores aqui
+#      son documentacion y defaults para desarrollo.
+#
+# CONFIGURACION DEL TRIGGER (Cloud Build > Triggers):
+#   _AR_HOST        → us-central1-docker.pkg.dev
+#   _AR_REPO        → mundolimpio-repo (crear en Artifact Registry)
+#   _SERVICE_NAME   → mundolimpio-api
+#   _REGION         → us-central1
+#   _PGHOST         → {host de Supabase, ej: aws-0-us-east-1.pooler.supabase.com}
+#   _PGPORT         → 6543 (PgBouncer pooler de Supabase)
+#   _PGDATABASE     → postgres
+#   _PGUSER         → postgres.{ref}
+#   _PGPASSWORD     → {contraseña de Supabase}
+#   _JWT_SECRET_KEY → {clave secreta JWT, minimo 256 bits}
+#   _CORS_ORIGINS   → {URL del frontend, ej: https://miapp.web.app}
+#
+# DIFFERENCES con hardcoding:
+#   - Variables sensibles NUNCA en el repositorio
+#   - El trigger las inyecta en tiempo de build
+#   - Para mayor seguridad en produccion, mover PGPASSWORD y
+#     JWT_SECRET_KEY a Secret Manager en vez de sustitucion.
+substitutions:
+  _AR_HOST: us-central1-docker.pkg.dev
+  _AR_REPO: mundolimpio-repo
+  _SERVICE_NAME: mundolimpio-api
+  _REGION: us-central1
+  # Las siguientes variables son PLACEHOLDERS.
+  # Configurar en el trigger de Cloud Build, NO aqui.
+  _PGHOST: aws-0-us-east-1.pooler.supabase.com
+  _PGPORT: '6543'
+  _PGDATABASE: postgres
+  _PGUSER: postgres
+  _PGPASSWORD: CHANGE_ME_IN_CLOUD_BUILD_TRIGGER
+  _JWT_SECRET_KEY: CHANGE_ME_IN_CLOUD_BUILD_TRIGGER
+  _CORS_ORIGINS: '*'
+
+# ============================================================
+# Opciones de build
+# ============================================================
+# WHAT: Configuracion de logs, timeout y maquina de build
+# WHY: logsBucket guarda los logs para debugging.
+#      timeout=900s porque el build de Maven + Docker puede
+#      tomar hasta 10-12 minutos en la primera ejecucion
+#      (descarga de dependencias Maven + layers Docker).
+#      machineType=E2_HIGHCPU_8 acelera la compilacion Maven.
+# DIFFERENCES: Sin esto, Cloud Build usa defaults que pueden
+#      no ser suficientes (timeout de 600s, maquina chica).
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# WHAT: Imagenes producidas por este build (para tracking en Artifact Registry)
+# WHY: Cloud Build automaticamente asocia estas imagenes con el build,
+#      permitiendo ver en la UI que imagenes se generaron en cada ejecucion.
+images:
+  - '$_AR_HOST/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$SHORT_SHA'
+
+# WHAT: Timeout maximo del pipeline completo
+# WHY: 900s (15 min) cubre build Maven (~5-8 min) + Docker build (~2 min)
+#      + push (~1 min) + deploy (~1 min) con margen para cold starts.
+timeout: 900s

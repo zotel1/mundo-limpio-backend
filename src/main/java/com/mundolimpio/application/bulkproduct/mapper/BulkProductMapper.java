@@ -19,13 +19,15 @@ public class BulkProductMapper {
      * */
 
     public BulkProduct toEntity(BulkProductRequest request) {
-        return new BulkProduct(
+        BulkProduct entity = new BulkProduct(
                 null,
                 request.name(),
                 request.currentStockLiters(),
-                request.costperLiter(),
+                request.costPerLiter(),
                 request.conversionRatio()
         );
+        entity.setActive(true); // Por defecto, la materia prima se crea activa
+        return entity;
     }
 
     /**
@@ -39,8 +41,8 @@ public class BulkProductMapper {
         if (request.currentStockLiters() != null) {
             entity.setCurrentStockLiters(request.currentStockLiters());
         }
-        if (request.costperLiter() != null) {
-            entity.setCostPerLiter(request.costperLiter());
+        if (request.costPerLiter() != null) {
+            entity.setCostPerLiter(request.costPerLiter());
         }
         if (request.conversionRatio() != null) {
             entity.setConversionRatio(request.conversionRatio());
@@ -57,7 +59,8 @@ public class BulkProductMapper {
                 entity.getName(),
                 entity.getCurrentStockLiters(),
                 entity.getCostPerLiter(),
-                entity.getConversionRatio()
+                entity.getConversionRatio(),
+                entity.getActive()
         );
     }
 

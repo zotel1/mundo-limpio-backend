@@ -72,10 +72,16 @@ public class SecurityConfig {
                         // los headers CORS y rechaza el request real.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/product/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "swagger-ui.html").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // Health check de Cloud Run — debe ser publico
+                        // WHAT: Permitir /actuator/health sin autenticacion
+                        // WHY: Cloud Run envia health probes HTTP sin Authorization header.
+                        //      Si bloqueamos este endpoint, el contenedor nunca pasa
+                        //      el health check y Cloud Run lo reinicia en loop infinito.
+                        .requestMatchers("/actuator/health/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))

@@ -2,7 +2,7 @@ package com.mundolimpio.application.user.controller;
 
 import com.mundolimpio.application.user.domain.Role;
 import com.mundolimpio.application.user.domain.User;
-import com.mundolimpio.application.user.dto.ChangeRoleRequest;
+import com.mundolimpio.application.user.dto.ChangeRolesRequest;
 import com.mundolimpio.application.user.dto.ResetPasswordRequest;
 import com.mundolimpio.application.user.dto.UserResponse;
 import com.mundolimpio.application.user.exception.UserNotFoundException;
@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.*;
@@ -88,8 +89,8 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     void findAll_AsAdmin_Returns200WithUserList() throws Exception {
         // Given: el servicio retorna una lista con 2 usuarios
         List<UserResponse> mockUsers = List.of(
-                new UserResponse(1L, "admin", "ADMIN", Instant.now()),
-                new UserResponse(2L, "operator", "OPERATOR", Instant.now())
+                new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", Instant.now(), List.of("ADMIN")),
+                new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"))
         );
 
         when(userManagementService.findAll()).thenReturn(mockUsers);
@@ -101,10 +102,12 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id").value(1))
                 .andExpect(jsonPath("$[0].username").value("admin"))
+                .andExpect(jsonPath("$[0].email").value("admin@mundolimpio.com"))
                 .andExpect(jsonPath("$[0].role").value("ADMIN"))
                 .andExpect(jsonPath("$[1].id").value(2))
                 .andExpect(jsonPath("$[1].username").value("operator"))
-                .andExpect(jsonPath("$[1].role").value("OPERATOR"));
+                .andExpect(jsonPath("$[1].email").value("operator@mundolimpio.com"))
+                .andExpect(jsonPath("$[1].role").value("SALES_CLERK"));
     }
 
     /**
@@ -120,7 +123,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
      * - @WithMockUser(roles = "OPERATOR") simula un usuario autenticado sin ADMIN.
      */
     @Test
-    @WithMockUser(roles = "OPERATOR")
+    @WithMockUser(roles = "SALES_CLERK")
     void findAll_AsOperator_Returns403() throws Exception {
         mockMvc.perform(get("/api/v1/users"))
                 .andExpect(status().isForbidden())
@@ -154,7 +157,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void findById_WhenExists_Returns200() throws Exception {
         // Given: el servicio retorna un usuario existente
-        UserResponse mockUser = new UserResponse(2L, "operator", "OPERATOR", Instant.now());
+        UserResponse mockUser = new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"));
 
         when(userManagementService.findById(2L)).thenReturn(mockUser);
 
@@ -164,7 +167,8 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
                 .andExpect(jsonPath("$.username").value("operator"))
-                .andExpect(jsonPath("$.role").value("OPERATOR"));
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
+                .andExpect(jsonPath("$.role").value("SALES_CLERK"));
     }
 
     /**
@@ -189,84 +193,71 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.message").value("User not found with ID: 99"));
     }
 
-    // ==================== PATCH /api/v1/users/{id}/role ====================
+    // ==================== PATCH /api/v1/users/{id}/roles ====================
 
     /**
-     * Test 6: PATCH /api/v1/users/{id}/role con body válido retorna 200.
-     *
-     * QUÉ VERIFICA:
-     * - Controller extrae el ID del usuario autenticado del SecurityContext.
-     * - Controller llama a service.changeRole() con los parámetros correctos.
-     * - Status 200 OK con el UserResponse actualizado.
+     * Test 6: PATCH /api/v1/users/{id}/roles con body valido retorna 200.
+     * <p>
+     * WHAT: Admin asigna multiples roles via ChangeRolesRequest con Set<Role>.
+     * Verifica que el controller llama a service.changeRoles() con los
+     * parametros correctos y retorna 200 con UserResponse.
      */
     @Test
     @WithMockUser(roles = "ADMIN")
-    void changeRole_ValidRequest_Returns200() throws Exception {
-        // Given: el servicio retorna el usuario con rol actualizado
-        UserResponse updatedUser = new UserResponse(2L, "operator", "ADMIN", Instant.now());
+    void changeRoles_ValidRequest_Returns200() throws Exception {
+        // Given: el servicio retorna el usuario con roles actualizados
+        UserResponse updatedUser = new UserResponse(2L, "operator",
+                "operator@mundolimpio.com", "STOCK_MANAGER", Instant.now(),
+                List.of("STOCK_MANAGER", "SALES_CLERK"));
 
-        when(userManagementService.changeRole(eq(2L), eq("ADMIN"), any()))
+        when(userManagementService.changeRoles(eq(2L), any(ChangeRolesRequest.class), any()))
                 .thenReturn(updatedUser);
 
-        // When/Then: PATCH /api/v1/users/2/role → 200 OK con rol actualizado
-        mockMvc.perform(patch("/api/v1/users/{id}/role", 2L)
+        // When/Then: PATCH /api/v1/users/2/roles → 200 OK con roles actualizados
+        mockMvc.perform(patch("/api/v1/users/{id}/roles", 2L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"newRole\":\"ADMIN\"}"))
+                        .content("{\"roles\":[\"STOCK_MANAGER\",\"SALES_CLERK\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
-                .andExpect(jsonPath("$.role").value("ADMIN"));
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
+                .andExpect(jsonPath("$.role").value("STOCK_MANAGER"));
     }
 
     /**
-     * Test 7: PATCH /api/v1/users/{id}/role con rol inválido retorna 400.
-     *
-     * QUÉ VERIFICA:
-     * - Service.changeRole() lanza IllegalArgumentException("INVALID_ROLE:...").
-     * - UserExceptionHandler captura y retorna 400 con código "INVALID_ROLE".
+     * Test 7: PATCH /api/v1/users/{id}/roles con ADMIN_EXCLUSIVE retorna 400.
+     * <p>
+     * WHAT: Cuando el servicio lanza ADMIN_EXCLUSIVE (ADMIN combinado con
+     * otros roles), el UserExceptionHandler retorna 400 con ese codigo.
      */
     @Test
     @WithMockUser(roles = "ADMIN")
-    void changeRole_InvalidRole_Returns400() throws Exception {
-        // Given: el servicio lanza INVALID_ROLE para un rol no válido
-        when(userManagementService.changeRole(eq(2L), eq("INVALID"), any()))
+    void changeRoles_AdminExclusive_Returns400() throws Exception {
+        // Given: el servicio lanza ADMIN_EXCLUSIVE
+        when(userManagementService.changeRoles(eq(2L), any(ChangeRolesRequest.class), any()))
                 .thenThrow(new IllegalArgumentException(
-                        "INVALID_ROLE: El rol 'INVALID' no es válido. Use ADMIN u OPERATOR."));
+                        "ADMIN_EXCLUSIVE: El rol ADMIN no puede combinarse con otros roles."));
 
-        // When/Then: PATCH con rol inválido → 400 INVALID_ROLE
-        mockMvc.perform(patch("/api/v1/users/{id}/role", 2L)
+        // When/Then: PATCH con ADMIN + otro rol → 400 ADMIN_EXCLUSIVE
+        mockMvc.perform(patch("/api/v1/users/{id}/roles", 2L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"newRole\":\"INVALID\"}"))
+                        .content("{\"roles\":[\"ADMIN\",\"SALES_CLERK\"]}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_ROLE"))
-                .andExpect(jsonPath("$.message").value(
-                        "INVALID_ROLE: El rol 'INVALID' no es válido. Use ADMIN u OPERATOR."));
+                .andExpect(jsonPath("$.code").value("ADMIN_EXCLUSIVE"));
     }
 
     /**
-     * Test 8: PATCH /api/v1/users/{id}/role cuando ADMIN se autodemueve retorna 400.
-     *
-     * QUÉ VERIFICA:
-     * - Controller extrae correctamente el ID del ADMIN del SecurityContext.
-     * - Controller pasa currentUserId al service.
-     * - Service lanza IllegalArgumentException("SELF_DEMOTION:...").
-     * - UserExceptionHandler retorna 400 con código "SELF_DEMOTION".
-     *
-     * POR QUÉ usamos SecurityContextHolder manual en vez de @WithMockUser solo:
-     * - @WithMockUser(roles="ADMIN") usa un String como principal ("user").
-     * - getCurrentUserId() en el controller verifica
-     *   authentication.getPrincipal() instanceof User (dominio).
-     * - Con @WithMockUser, el principal NO es un User de dominio → getCurrentUserId()
-     *   retorna null.
-     * - Para probar la autodemoción necesitamos un principal de tipo User con ID real.
-     * - Seteamos manualmente un UsernamePasswordAuthenticationToken con el dominio User
-     *   como principal.
+     * Test 8: PATCH /api/v1/users/{id}/roles con SELF_ADMIN_REMOVAL retorna 400.
+     * <p>
+     * WHAT: Cuando un ADMIN intenta quitarse su propio ADMIN via PATCH /roles,
+     * el servicio lanza SELF_ADMIN_REMOVAL y el handler retorna 400.
+     * Necesitamos SecurityContext con User real para getCurrentUserId().
      */
     @Test
     @WithMockUser(roles = "ADMIN")
-    void changeRole_SelfDemotion_Returns400() throws Exception {
-        // Given: un ADMIN autenticado con ID=1 (usando User de dominio real)
-        User adminUser = new User("admin", "pass", Role.ADMIN);
+    void changeRoles_SelfAdminRemoval_Returns400() throws Exception {
+        // Given: un ADMIN autenticado con ID=1
+        User adminUser = new User("admin", "admin@mundolimpio.com", "pass", Role.ADMIN);
         adminUser.setId(1L);
 
         UsernamePasswordAuthenticationToken authToken =
@@ -274,38 +265,34 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                         adminUser, null, adminUser.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(authToken);
 
-        // El servicio lanza SELF_DEMOTION cuando currentUserId == targetId
-        when(userManagementService.changeRole(eq(1L), eq("OPERATOR"), eq(1L)))
+        // El servicio lanza SELF_ADMIN_REMOVAL cuando currentUserId == targetId
+        when(userManagementService.changeRoles(eq(1L), any(ChangeRolesRequest.class), eq(1L)))
                 .thenThrow(new IllegalArgumentException(
-                        "SELF_DEMOTION: No puedes cambiar tu propio rol. " +
-                        "Otro administrador debe realizar esta operación."));
+                        "SELF_ADMIN_REMOVAL: No puedes quitarte tu propio rol ADMIN. " +
+                        "Otro administrador debe realizar esta operacion."));
 
-        // When/Then: ADMIN intenta cambiarse su propio rol → 400 SELF_DEMOTION
-        mockMvc.perform(patch("/api/v1/users/{id}/role", 1L)
+        // When/Then: ADMIN intenta quitarse su propio ADMIN → 400 SELF_ADMIN_REMOVAL
+        mockMvc.perform(patch("/api/v1/users/{id}/roles", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"newRole\":\"OPERATOR\"}"))
+                        .content("{\"roles\":[\"SALES_CLERK\"]}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("SELF_DEMOTION"));
+                .andExpect(jsonPath("$.code").value("SELF_ADMIN_REMOVAL"));
     }
 
     /**
-     * Test 9: PATCH /api/v1/users/{id}/role con usuario inexistente retorna 404.
-     *
-     * QUÉ VERIFICA:
-     * - Service.changeRole() lanza UserNotFoundException.
-     * - Status 404 NOT_FOUND con código "USER_NOT_FOUND".
+     * Test 9: PATCH /api/v1/users/{id}/roles con usuario inexistente retorna 404.
      */
     @Test
     @WithMockUser(roles = "ADMIN")
-    void changeRole_UserNotFound_Returns404() throws Exception {
+    void changeRoles_UserNotFound_Returns404() throws Exception {
         // Given: el servicio lanza UserNotFoundException para el ID 99
-        when(userManagementService.changeRole(eq(99L), anyString(), any()))
+        when(userManagementService.changeRoles(eq(99L), any(ChangeRolesRequest.class), any()))
                 .thenThrow(new UserNotFoundException(99L));
 
         // When/Then: PATCH a usuario inexistente → 404 USER_NOT_FOUND
-        mockMvc.perform(patch("/api/v1/users/{id}/role", 99L)
+        mockMvc.perform(patch("/api/v1/users/{id}/roles", 99L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"newRole\":\"ADMIN\"}"))
+                        .content("{\"roles\":[\"ADMIN\"]}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("User not found with ID: 99"));
@@ -324,7 +311,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void resetPassword_ValidRequest_Returns200() throws Exception {
         // Given: el servicio retorna el usuario con contraseña reseteada
-        UserResponse userResponse = new UserResponse(2L, "operator", "OPERATOR", Instant.now());
+        UserResponse userResponse = new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"));
 
         when(userManagementService.resetPassword(eq(2L), eq("NewPass123")))
                 .thenReturn(userResponse);
@@ -336,6 +323,7 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.email").value("operator@mundolimpio.com"))
                 .andExpect(jsonPath("$.username").value("operator"));
     }
 

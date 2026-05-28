@@ -30,4 +30,27 @@ spring:
     #       Sin Flyway, el esquema no existe y ddl-auto: validate falla.
     # DIFFERENCES: Antes: enabled: false (Hibernate creaba tablas via create-drop en H2).
     #              Ahora: enabled: true (Flyway crea tablas idénticas a producción).
-    enabled: true
+     enabled: true
+
+# WHAT: Habilitar health probes (liveness/readiness) para validar SecurityConfig wildcard.
+# WHY: Sin probes=always, /actuator/health/liveness y /actuator/health/readiness retornan 404.
+#      Necesitamos que estén expuestos para verificar que el wildcard /actuator/health/**
+#      permite acceso sin autenticación a todos los sub-paths.
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# WHAT: Configuración de Supabase Storage para tests.
+# WHY: SupabaseStorageService necesita estas propiedades para inyectar @Value,
+#      aunque en tests de integración del controller se mockee S3Client.
+#      Sin estos valores, Spring no puede crear el bean SupabaseStorageService.
+app:
+  supabase:
+    endpoint: https://test-project.supabase.co
+    bucket: receipts-test
+    public-base-url: https://test-project.supabase.co/storage/v1/object/public
+    access-key: test-access-key
+    secret-key: test-secret-key
+    region: us-east-1
