@@ -23,6 +23,8 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  jackson:
+    default-property-inclusion: non_null
 
 # WHAT: Configuración de Supabase Storage para almacenamiento de imágenes de tickets.
 # WHY: Supabase Storage expone API S3-compatible. Usamos el SDK AWS S3 para subir imágenes.

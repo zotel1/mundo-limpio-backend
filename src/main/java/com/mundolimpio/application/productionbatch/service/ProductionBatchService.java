@@ -11,6 +11,7 @@ import com.mundolimpio.application.productionbatch.dto.ProductionBatchResponse;
 import com.mundolimpio.application.productionbatch.exception.ProductionBatchNotFoundException;
 import com.mundolimpio.application.productionbatch.mapper.ProductionBatchMapper;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -131,6 +132,18 @@ public class ProductionBatchService {
         ProductionBatch batch = repository.findById(id)
                 .orElseThrow(() -> new ProductionBatchNotFoundException("Production batch not found with id: " + id));
         return mapper.toResponse(batch);
+    }
+
+    /**
+     * Obtiene todos los lotes de producción.
+     * Ordenados por fecha de producción descendente (nuevo primero).
+     *
+     * @return lista de todos los lotes, vacía si no hay ninguno
+     */
+    public List<ProductionBatchResponse> getAllProductionBatches() {
+        return repository.findAll(Sort.by(Sort.Direction.DESC, "productionDate")).stream()
+                .map(mapper::toResponse)
+                .toList();
     }
 
     /**

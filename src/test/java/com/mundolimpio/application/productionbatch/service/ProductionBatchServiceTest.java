@@ -16,8 +16,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -115,6 +118,113 @@ class ProductionBatchServiceTest {
         when(bulkProductRepository.findById(999L)).thenReturn(Optional.empty());
 
         assertThrows(ProductionBatchNotFoundException.class, () -> service.createProductionBatch(request));
+    }
+
+    // ==================== GET ALL BATCHES TESTS ====================
+
+    /**
+     * Test: getAllProductionBatches debe retornar todos los lotes ordenados por fecha DESC.
+     * <p>
+     * QUE VERIFICA:
+     * - repository.findAll(Sort) es llamado con Sort.by(DESC, "productionDate")
+     * - Los 3 lotes mockeados se retornan en el orden correcto (nuevo primero)
+     * - Mapper convierte cada entidad a ProductionBatchResponse
+     */
+    @Test
+    void shouldReturnAllBatches() {
+        // Setup: crear 3 lotes con fechas distintas
+        BulkProduct bulk = new BulkProduct(1L, "Cloro Puro", BigDecimal.TEN,
+                new BigDecimal("5.50"), new BigDecimal("4.0"));
+        Product product = new Product(1L, "LAVANDINA-001", "Lavandina 3L", BigDecimal.TEN, true);
+
+        ProductionBatch oldest = new ProductionBatch(product, bulk,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("10.00"));
+        setProductionDate(oldest, Instant.parse("2026-05-01T10:00:00Z"));
+
+        ProductionBatch middle = new ProductionBatch(product, bulk,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("15.00"));
+        setProductionDate(middle, Instant.parse("2026-05-15T10:00:00Z"));
+
+        ProductionBatch newest = new ProductionBatch(product, bulk,
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("20.00"));
+        setProductionDate(newest, Instant.parse("2026-05-28T10:00:00Z"));
+
+        // Repository devuelve ordenado DESC por productionDate (DB order)
+        when(productionBatchRepository.findAll(any(Sort.class)))
+                .thenReturn(List.of(newest, middle, oldest));
+
+        // Mapper: oldest → response1, middle → response2, newest → response3
+        ProductionBatchResponse respOldest = new ProductionBatchResponse(
+                1L, 1L, "Lavandina 3L", 1L, "Cloro Puro",
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("10.00"), Instant.parse("2026-05-01T10:00:00Z"));
+        ProductionBatchResponse respMiddle = new ProductionBatchResponse(
+                2L, 1L, "Lavandina 3L", 1L, "Cloro Puro",
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("15.00"), Instant.parse("2026-05-15T10:00:00Z"));
+        ProductionBatchResponse respNewest = new ProductionBatchResponse(
+                3L, 1L, "Lavandina 3L", 1L, "Cloro Puro",
+                new BigDecimal("80.00"), new BigDecimal("80.00"),
+                new BigDecimal("1.375"), new BigDecimal("20.00"), Instant.parse("2026-05-28T10:00:00Z"));
+
+        when(productionBatchMapper.toResponse(oldest)).thenReturn(respOldest);
+        when(productionBatchMapper.toResponse(middle)).thenReturn(respMiddle);
+        when(productionBatchMapper.toResponse(newest)).thenReturn(respNewest);
+
+        // Execute
+        List<ProductionBatchResponse> result = service.getAllProductionBatches();
+
+        // Verify
+        assertNotNull(result);
+        assertEquals(3, result.size());
+        // Debe estar ordenado DESC por productionDate: newest first
+        assertEquals(Instant.parse("2026-05-28T10:00:00Z"), result.get(0).productionDate());
+        assertEquals(Instant.parse("2026-05-15T10:00:00Z"), result.get(1).productionDate());
+        assertEquals(Instant.parse("2026-05-01T10:00:00Z"), result.get(2).productionDate());
+
+        verify(productionBatchRepository).findAll(any(Sort.class));
+        verify(productionBatchMapper, times(3)).toResponse(any(ProductionBatch.class));
+    }
+
+    /**
+     * Test: getAllProductionBatches debe retornar lista vacía cuando no hay lotes.
+     * <p>
+     * QUE VERIFICA:
+     * - repository.findAll(Sort) devuelve lista vacía
+     * - El resultado es una lista vacía (no null)
+     */
+    @Test
+    void shouldReturnEmptyListWhenNoBatches() {
+        // Setup
+        when(productionBatchRepository.findAll(any(Sort.class)))
+                .thenReturn(List.of());
+
+        // Execute
+        List<ProductionBatchResponse> result = service.getAllProductionBatches();
+
+        // Verify
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+
+        verify(productionBatchRepository).findAll(any(Sort.class));
+        verify(productionBatchMapper, never()).toResponse(any());
+    }
+
+    /**
+     * Helper para setear productionDate via reflection.
+     * WHY: ProductionBatch constructor no expone productionDate como parámetro.
+     */
+    private void setProductionDate(ProductionBatch batch, Instant date) {
+        try {
+            var field = ProductionBatch.class.getDeclaredField("productionDate");
+            field.setAccessible(true);
+            field.set(batch, date);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set productionDate", e);
+        }
     }
 
     // ==================== STOCK VALIDATION TESTS (CRIT-2) ====================
