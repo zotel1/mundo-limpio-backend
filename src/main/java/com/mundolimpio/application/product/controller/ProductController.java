@@ -8,12 +8,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * ProductController expone los endpoints para la gestión de productos.
@@ -114,9 +116,10 @@ public class ProductController {
     }
 
     /**
-     * Obtiene todos los productos activos.
+     * Obtiene todos los productos activos con paginación.
      *
-     * @return Lista de ProductResponse con productos activos (200 OK)
+     * @param pageable Paginación y ordenamiento (default: sort by id DESC)
+     * @return Página de ProductResponse con productos activos (200 OK)
      */
     @GetMapping
     @PreAuthorize("permitAll()")
@@ -124,19 +127,21 @@ public class ProductController {
     // WHY: El frontend necesita listar productos activos sin autenticacion (pantalla de ventas)
     @Operation(
             summary = "Get all active products",
-            description = "Retrieves a list of all active products (active=true). " +
+            description = "Retrieves a paginated list of all active products (active=true). " +
                     "Useful for inventory management, FIFO operations, and sales."
     )
-    @ApiResponse(responseCode = "200", description = "List of active products")
-    public ResponseEntity<List<ProductResponse>> getAllActiveProducts() {
-        List<ProductResponse> response = productService.getAllActiveProducts();
+    @ApiResponse(responseCode = "200", description = "Paginated list of active products")
+    public ResponseEntity<Page<ProductResponse>> getAllActiveProducts(
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<ProductResponse> response = productService.getAllActiveProducts(pageable);
         return ResponseEntity.ok(response);
     }
 
     /**
-     * Obtiene todos los productos (activos e inactivos).
+     * Obtiene todos los productos (activos e inactivos) con paginación.
      *
-     * @return Lista de ProductResponse con todos los productos (200 OK)
+     * @param pageable Paginación y ordenamiento (default: sort by id DESC)
+     * @return Página de ProductResponse con todos los productos (200 OK)
      */
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
@@ -146,12 +151,13 @@ public class ProductController {
     //              mantienen @PreAuthorize("permitAll()") explicito para claridad.
     @Operation(
             summary = "Get all products (active and inactive)",
-            description = "Retrieves a complete list of all products, including inactive ones. " +
+            description = "Retrieves a paginated list of all products, including inactive ones. " +
                     "Useful for administrative purposes and reporting."
     )
-    @ApiResponse(responseCode = "200", description = "Complete list of all products")
-    public ResponseEntity<List<ProductResponse>> getAllProducts() {
-        List<ProductResponse> response = productService.getAllProducts();
+    @ApiResponse(responseCode = "200", description = "Paginated list of all products")
+    public ResponseEntity<Page<ProductResponse>> getAllProducts(
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<ProductResponse> response = productService.getAllProducts(pageable);
         return ResponseEntity.ok(response);
     }
 

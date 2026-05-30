@@ -24,6 +24,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -231,11 +232,12 @@ class ProductControllerIT extends AbstractIntegrationTest {
         restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity1, ProductResponse.class);
         restTemplate.exchange("/api/v1/products", HttpMethod.POST, entity2, ProductResponse.class);
 
-        ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products", List.class);
+        ResponseEntity<Map> response = restTemplate.getForEntity("/api/v1/products", Map.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(2, response.getBody().size());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertEquals(2, content.size());
     }
 
     @Test
@@ -255,10 +257,11 @@ class ProductControllerIT extends AbstractIntegrationTest {
         // WHAT: /all ahora requiere ADMIN o STOCK_MANAGER (sync-frontend-backend)
         // WHY: El endpoint /all estaba expuesto sin auth via wildcard en SecurityConfig
         HttpEntity<Void> getAllEntity = new HttpEntity<>(authHeaders(admin.token()));
-        ResponseEntity<List> response = restTemplate.exchange("/api/v1/products/all", HttpMethod.GET, getAllEntity, List.class);
+        ResponseEntity<Map> response = restTemplate.exchange("/api/v1/products/all", HttpMethod.GET, getAllEntity, Map.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(2, response.getBody().size());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertEquals(2, content.size());
     }
 
     @Test
@@ -331,9 +334,10 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
         HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
         restTemplate.exchange("/api/v1/products/" + deleteId, HttpMethod.DELETE, deleteEntity, Void.class);
-        ResponseEntity<List> allActiveResponse = restTemplate.getForEntity("/api/v1/products", List.class);
+        ResponseEntity<Map> allActiveResponse = restTemplate.getForEntity("/api/v1/products", Map.class);
 
-        assertEquals(1, allActiveResponse.getBody().size());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) allActiveResponse.getBody().get("content");
+        assertEquals(1, content.size());
     }
 
     @Test
@@ -378,8 +382,9 @@ class ProductControllerIT extends AbstractIntegrationTest {
         HttpEntity<Void> patchEntity = new HttpEntity<>(authHeaders(admin.token()));
         restTemplate.exchange("/api/v1/products/" + productId + "/reactivate", HttpMethod.PATCH, patchEntity, Void.class);
 
-        ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products", List.class);
+        ResponseEntity<Map> response = restTemplate.getForEntity("/api/v1/products", Map.class);
 
-        assertEquals(1, response.getBody().size());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertEquals(1, content.size());
     }
 }

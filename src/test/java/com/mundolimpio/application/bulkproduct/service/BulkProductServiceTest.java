@@ -16,6 +16,11 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -151,34 +156,36 @@ class BulkProductServiceTest {
     @Test
     void shouldFilterInactiveFromGetAll() {
         // GIVEN: existen 2 productos activos y 1 inactivo, pero findByActiveTrue solo retorna activos
-        List<BulkProduct> activeList = List.of(activeEntity);
-        when(repository.findByActiveTrue()).thenReturn(activeList);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<BulkProduct> activePage = new PageImpl<>(List.of(activeEntity), pageable, 1);
+        when(repository.findByActiveTrue(any(Pageable.class))).thenReturn(activePage);
         when(mapper.toResponse(activeEntity)).thenReturn(activeResponse);
 
         // WHEN: se consultan todas las materias primas activas
-        List<BulkProductResponse> result = service.getAllBulkProducts();
+        Page<BulkProductResponse> result = service.getAllBulkProducts(pageable);
 
         // THEN: solo retorna las activas (1 en este caso)
-        assertEquals(1, result.size());
-        assertTrue(result.get(0).active());
-        verify(repository).findByActiveTrue();
-        verify(repository, never()).findAll();
+        assertEquals(1, result.getContent().size());
+        assertTrue(result.getContent().get(0).active());
+        verify(repository).findByActiveTrue(any(Pageable.class));
+        verify(repository, never()).findAll(any(Pageable.class));
     }
 
     @Test
     void shouldReturnAllIncludingInactiveFromAdmin() {
         // GIVEN: existen productos activos e inactivos
-        List<BulkProduct> allList = List.of(activeEntity, inactiveEntity);
-        when(repository.findAll()).thenReturn(allList);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<BulkProduct> allPage = new PageImpl<>(List.of(activeEntity, inactiveEntity), pageable, 2);
+        when(repository.findAll(any(Pageable.class))).thenReturn(allPage);
         when(mapper.toResponse(activeEntity)).thenReturn(activeResponse);
         when(mapper.toResponse(inactiveEntity)).thenReturn(inactiveResponse);
 
         // WHEN: se consulta el endpoint admin que retorna todo
-        List<BulkProductResponse> result = service.getAllBulkProductsAdmin();
+        Page<BulkProductResponse> result = service.getAllBulkProductsAdmin(pageable);
 
         // THEN: retorna todos (2)
-        assertEquals(2, result.size());
-        verify(repository).findAll();
-        verify(repository, never()).findByActiveTrue();
+        assertEquals(2, result.getContent().size());
+        verify(repository).findAll(any(Pageable.class));
+        verify(repository, never()).findByActiveTrue(any(Pageable.class));
     }
 }

@@ -10,12 +10,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * Controlador REST para la gestion de usuarios (ADMIN only).
@@ -50,31 +52,25 @@ public class UserManagementController {
     // ========================= LIST ALL USERS =========================
 
     /**
-     * Obtiene todos los usuarios del sistema.
+     * Obtiene todos los usuarios del sistema con paginación.
      *
-     * QUÉ HACE: Retorna la lista completa de usuarios registrados.
-     * Cada usuario incluye id, username, role y createdAt (sin contraseña).
-     * Si no hay usuarios, retorna lista vacía (no null).
-     *
-     * CÓMO FUNCIONA EL FLUJO:
-     * 1. @PreAuthorize verifica que el usuario tenga ROLE_ADMIN.
-     * 2. UserManagementService.findAll() consulta todos los usuarios.
-     *
-     * @return 200 OK con lista de UserResponse (puede ser vacía)
+     * @param pageable Paginación y ordenamiento (default: sort by createdAt DESC)
+     * @return 200 OK con página de UserResponse (puede ser vacía)
      */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "List all users",
-            description = "Returns all registered users. Only ADMIN can access."
+            description = "Returns all registered users with pagination. Only ADMIN can access."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "List of users (may be empty)"),
+            @ApiResponse(responseCode = "200", description = "Paginated list of users (may be empty)"),
             @ApiResponse(responseCode = "401", description = "Unauthorized: no authentication token"),
             @ApiResponse(responseCode = "403", description = "Forbidden: only ADMIN can access")
     })
-    public ResponseEntity<List<UserResponse>> findAll() {
-        List<UserResponse> users = userManagementService.findAll();
+    public ResponseEntity<Page<UserResponse>> findAll(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<UserResponse> users = userManagementService.findAll(pageable);
         return ResponseEntity.ok(users);
     }
 

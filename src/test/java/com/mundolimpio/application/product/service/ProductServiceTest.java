@@ -17,6 +17,11 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -318,21 +323,24 @@ class ProductServiceTest {
         ProductResponse r1 = createExpectedResponse(1L, "SKU-A1", "Active 1", BigDecimal.TEN, true);
         ProductResponse r2 = createExpectedResponse(2L, "SKU-A2", "Active 2", BigDecimal.ONE, true);
 
-        when(productRepository.findByActiveTrue()).thenReturn(List.of(p1, p2));
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Product> productPage = new PageImpl<>(List.of(p1, p2), pageable, 2);
+
+        when(productRepository.findByActiveTrue(any(Pageable.class))).thenReturn(productPage);
         when(productMapper.toResponse(p1)).thenReturn(r1);
         when(productMapper.toResponse(p2)).thenReturn(r2);
 
         // When: consultamos productos activos
-        List<ProductResponse> result = productService.getAllActiveProducts();
+        Page<ProductResponse> result = productService.getAllActiveProducts(pageable);
 
         // Then: debe retornar solo los activos
         assertNotNull(result);
-        assertEquals(2, result.size());
-        assertTrue(result.get(0).active());
-        assertTrue(result.get(1).active());
+        assertEquals(2, result.getContent().size());
+        assertTrue(result.getContent().get(0).active());
+        assertTrue(result.getContent().get(1).active());
 
-        // Verificar que se usó findByActiveTrue (no findAll)
-        verify(productRepository).findByActiveTrue();
+        // Verificar que se usó findByActiveTrue con Pageable (no findAll)
+        verify(productRepository).findByActiveTrue(any(Pageable.class));
         verify(productMapper).toResponse(p1);
         verify(productMapper).toResponse(p2);
     }
@@ -352,21 +360,24 @@ class ProductServiceTest {
         ProductResponse rActive = createExpectedResponse(1L, "SKU-ACT", "Active", BigDecimal.TEN, true);
         ProductResponse rInactive = createExpectedResponse(2L, "SKU-INACT", "Inactive", BigDecimal.ONE, false);
 
-        when(productRepository.findAll()).thenReturn(List.of(active, inactive));
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Product> productPage = new PageImpl<>(List.of(active, inactive), pageable, 2);
+
+        when(productRepository.findAll(any(Pageable.class))).thenReturn(productPage);
         when(productMapper.toResponse(active)).thenReturn(rActive);
         when(productMapper.toResponse(inactive)).thenReturn(rInactive);
 
         // When: consultamos todos los productos
-        List<ProductResponse> result = productService.getAllProducts();
+        Page<ProductResponse> result = productService.getAllProducts(pageable);
 
         // Then: debe incluir ambos
         assertNotNull(result);
-        assertEquals(2, result.size());
-        assertTrue(result.get(0).active());
-        assertFalse(result.get(1).active());
+        assertEquals(2, result.getContent().size());
+        assertTrue(result.getContent().get(0).active());
+        assertFalse(result.getContent().get(1).active());
 
-        // Verificar que se usó findAll
-        verify(productRepository).findAll();
+        // Verificar que se usó findAll con Pageable
+        verify(productRepository).findAll(any(Pageable.class));
         verify(productMapper, times(2)).toResponse(any());
     }
 

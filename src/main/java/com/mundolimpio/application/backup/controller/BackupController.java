@@ -6,13 +6,15 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * WHAT: Controlador REST para gestion de backups de base de datos.
@@ -57,17 +59,19 @@ public class BackupController {
     }
 
     /**
-     * WHAT: Lista todos los backups ordenados por fecha descendente.
+     * WHAT: Lista todos los backups con paginación.
      *
-     * @return 200 OK con lista de BackupResponse (puede ser vacia)
+     * @param pageable Paginación y ordenamiento (default: sort by createdAt DESC)
+     * @return 200 OK con página de BackupResponse (puede ser vacía)
      */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "List all backups",
-            description = "Returns all backups ordered by creation date descending. ADMIN only.")
-    @ApiResponse(responseCode = "200", description = "List of backups")
-    public ResponseEntity<List<BackupResponse>> getAllBackups() {
-        return ResponseEntity.ok(backupService.getAllBackups());
+            description = "Returns a paginated list of backups ordered by creation date descending. ADMIN only.")
+    @ApiResponse(responseCode = "200", description = "Paginated list of backups")
+    public ResponseEntity<Page<BackupResponse>> getAllBackups(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(backupService.getAllBackups(pageable));
     }
 
     /**

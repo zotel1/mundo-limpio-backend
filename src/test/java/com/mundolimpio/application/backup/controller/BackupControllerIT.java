@@ -14,6 +14,7 @@ import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -149,16 +150,17 @@ class BackupControllerIT extends AbstractIntegrationTest {
      */
     @Test
     void shouldReturnEmptyListWhenNoBackups() {
-        ResponseEntity<List> response = restTemplate.exchange(
+        ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/v1/admin/backups",
                 HttpMethod.GET,
                 authRequest(adminHeaders),
-                List.class
+                Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertTrue(response.getBody().isEmpty());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertTrue(content.isEmpty());
     }
 
     // ==================== DOWNLOAD BACKUP — AUTH & NOT FOUND TESTS ====================

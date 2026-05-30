@@ -23,6 +23,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -167,19 +172,21 @@ class BackupServiceTest {
         Backup newer = createBackupWithId(2L, "backup-new.sql.gz", BackupStatus.COMPLETED,
                 Instant.parse("2026-05-28T10:00:00Z"));
 
-        when(repository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(newer, older));
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Backup> backupPage = new PageImpl<>(List.of(newer, older), pageable, 2);
+        when(repository.findAll(any(Pageable.class))).thenReturn(backupPage);
 
         // When
-        List<BackupResponse> responses = service.getAllBackups();
+        Page<BackupResponse> responses = service.getAllBackups(pageable);
 
         // Then
         assertNotNull(responses);
-        assertEquals(2, responses.size());
-        assertEquals(2L, responses.get(0).id());
-        assertEquals("backup-new.sql.gz", responses.get(0).filename());
-        assertEquals(1L, responses.get(1).id());
+        assertEquals(2, responses.getContent().size());
+        assertEquals(2L, responses.getContent().get(0).id());
+        assertEquals("backup-new.sql.gz", responses.getContent().get(0).filename());
+        assertEquals(1L, responses.getContent().get(1).id());
 
-        verify(repository).findAllByOrderByCreatedAtDesc();
+        verify(repository).findAll(any(Pageable.class));
     }
 
     /**
@@ -192,16 +199,18 @@ class BackupServiceTest {
     @Test
     void shouldGetAllBackupsWhenEmpty() {
         // Given
-        when(repository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of());
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Backup> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+        when(repository.findAll(any(Pageable.class))).thenReturn(emptyPage);
 
         // When
-        List<BackupResponse> responses = service.getAllBackups();
+        Page<BackupResponse> responses = service.getAllBackups(pageable);
 
         // Then
         assertNotNull(responses);
-        assertTrue(responses.isEmpty());
+        assertTrue(responses.getContent().isEmpty());
 
-        verify(repository).findAllByOrderByCreatedAtDesc();
+        verify(repository).findAll(any(Pageable.class));
     }
 
     // ==================== GET BACKUP BY ID TESTS ====================

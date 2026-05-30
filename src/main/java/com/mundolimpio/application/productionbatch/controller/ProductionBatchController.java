@@ -8,12 +8,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * ProductionBatchController expone los endpoints para la gestión de lotes de producción.
@@ -63,7 +65,7 @@ public class ProductionBatchController {
     }
 
     /**
-     * Obtiene todos los lotes de producción.
+     * Obtiene todos los lotes de producción con paginación.
      * Ordenados por fecha de producción descendente (nuevo primero).
      */
     @GetMapping
@@ -72,15 +74,16 @@ public class ProductionBatchController {
     // WHY: El frontend Flutter necesita listar todos los lotes para la pantalla de producción
     @Operation(
             summary = "Get all production batches",
-            description = "Retrieves all production batches ordered by production date descending (newest first). ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
+            description = "Retrieves a paginated list of production batches ordered by production date descending (newest first). ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
     )
-    @ApiResponse(responseCode = "200", description = "List of all production batches")
-    public ResponseEntity<List<ProductionBatchResponse>> getAllProductionBatches() {
-        return ResponseEntity.ok(service.getAllProductionBatches());
+    @ApiResponse(responseCode = "200", description = "Paginated list of production batches")
+    public ResponseEntity<Page<ProductionBatchResponse>> getAllProductionBatches(
+            @PageableDefault(size = 20, sort = "productionDate", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(service.getAllProductionBatches(pageable));
     }
 
     /**
-     * Obtiene todos los lotes de un producto específico.
+     * Obtiene todos los lotes de un producto específico con paginación.
      */
     @GetMapping("/product/{productId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'PRODUCTION_OP')")
@@ -88,15 +91,16 @@ public class ProductionBatchController {
     // WHY: STOCK_MANAGER audita produccion; PRODUCTION_OP consulta su propio trabajo
     @Operation(
             summary = "Get batches by product",
-            description = "Retrieves all production batches for a specific product. ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
+            description = "Retrieves a paginated list of production batches for a specific product. ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "List of batches"),
+            @ApiResponse(responseCode = "200", description = "Paginated list of batches"),
             @ApiResponse(responseCode = "403", description = "Forbidden: Only ADMIN can access")
     })
-    public ResponseEntity<List<ProductionBatchResponse>> getBatchesByProductId(
-            @PathVariable Long productId) {
-        return ResponseEntity.ok(service.getBatchesByProductId(productId));
+    public ResponseEntity<Page<ProductionBatchResponse>> getBatchesByProductId(
+            @PathVariable Long productId,
+            @PageableDefault(size = 20, sort = "productionDate", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(service.getBatchesByProductId(productId, pageable));
     }
 
     /**

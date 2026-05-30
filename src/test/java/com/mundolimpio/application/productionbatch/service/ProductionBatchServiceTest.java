@@ -16,6 +16,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
@@ -152,9 +156,11 @@ class ProductionBatchServiceTest {
                 new BigDecimal("1.375"), new BigDecimal("20.00"));
         setProductionDate(newest, Instant.parse("2026-05-28T10:00:00Z"));
 
-        // Repository devuelve ordenado DESC por productionDate (DB order)
-        when(productionBatchRepository.findAll(any(Sort.class)))
-                .thenReturn(List.of(newest, middle, oldest));
+        // Repository devuelve página ordenada DESC por productionDate
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<ProductionBatch> batchPage = new PageImpl<>(List.of(newest, middle, oldest), pageable, 3);
+        when(productionBatchRepository.findAll(any(Pageable.class)))
+                .thenReturn(batchPage);
 
         // Mapper: oldest → response1, middle → response2, newest → response3
         ProductionBatchResponse respOldest = new ProductionBatchResponse(
@@ -175,17 +181,17 @@ class ProductionBatchServiceTest {
         when(productionBatchMapper.toResponse(newest)).thenReturn(respNewest);
 
         // Execute
-        List<ProductionBatchResponse> result = service.getAllProductionBatches();
+        Page<ProductionBatchResponse> result = service.getAllProductionBatches(pageable);
 
         // Verify
         assertNotNull(result);
-        assertEquals(3, result.size());
+        assertEquals(3, result.getContent().size());
         // Debe estar ordenado DESC por productionDate: newest first
-        assertEquals(Instant.parse("2026-05-28T10:00:00Z"), result.get(0).productionDate());
-        assertEquals(Instant.parse("2026-05-15T10:00:00Z"), result.get(1).productionDate());
-        assertEquals(Instant.parse("2026-05-01T10:00:00Z"), result.get(2).productionDate());
+        assertEquals(Instant.parse("2026-05-28T10:00:00Z"), result.getContent().get(0).productionDate());
+        assertEquals(Instant.parse("2026-05-15T10:00:00Z"), result.getContent().get(1).productionDate());
+        assertEquals(Instant.parse("2026-05-01T10:00:00Z"), result.getContent().get(2).productionDate());
 
-        verify(productionBatchRepository).findAll(any(Sort.class));
+        verify(productionBatchRepository).findAll(any(Pageable.class));
         verify(productionBatchMapper, times(3)).toResponse(any(ProductionBatch.class));
     }
 
@@ -199,17 +205,19 @@ class ProductionBatchServiceTest {
     @Test
     void shouldReturnEmptyListWhenNoBatches() {
         // Setup
-        when(productionBatchRepository.findAll(any(Sort.class)))
-                .thenReturn(List.of());
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<ProductionBatch> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+        when(productionBatchRepository.findAll(any(Pageable.class)))
+                .thenReturn(emptyPage);
 
         // Execute
-        List<ProductionBatchResponse> result = service.getAllProductionBatches();
+        Page<ProductionBatchResponse> result = service.getAllProductionBatches(pageable);
 
         // Verify
         assertNotNull(result);
-        assertTrue(result.isEmpty());
+        assertTrue(result.getContent().isEmpty());
 
-        verify(productionBatchRepository).findAll(any(Sort.class));
+        verify(productionBatchRepository).findAll(any(Pageable.class));
         verify(productionBatchMapper, never()).toResponse(any());
     }
 
