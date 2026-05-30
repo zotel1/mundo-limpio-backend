@@ -52,7 +52,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
      */
     @Test
     void register_shouldReturnCustomerRole() {
-        RegisterRequest request = new RegisterRequest("newuser@test.com", "password123");
+        RegisterRequest request = new RegisterRequest("newuser@test.com", "Password123");
 
         ResponseEntity<LoginResponse> response = restTemplate.postForEntity(
                 "/api/v1/auth/register",
@@ -98,7 +98,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
     @Test
     void login_shouldReturnCustomerRole() {
         // 1. Registrar usuario primero
-        RegisterRequest registerReq = new RegisterRequest("loginuser@test.com", "password123");
+        RegisterRequest registerReq = new RegisterRequest("loginuser@test.com", "Password123");
 
         ResponseEntity<LoginResponse> registerRes = restTemplate.postForEntity(
                 "/api/v1/auth/register",
@@ -111,7 +111,7 @@ class AuthControllerIT extends AbstractIntegrationTest {
                 .isEqualTo(HttpStatus.CREATED);
 
         // 2. Login con las mismas credenciales
-        LoginRequest loginReq = new LoginRequest("loginuser@test.com", "password123");
+        LoginRequest loginReq = new LoginRequest("loginuser@test.com", "Password123");
 
         ResponseEntity<LoginResponse> loginRes = restTemplate.postForEntity(
                 "/api/v1/auth/login",
