@@ -28,6 +28,11 @@ FROM eclipse-temurin:21-jre-alpine
 #      Sin el language pack, Tesseract solo funciona en inglés.
 RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-spa
 
+# WHAT: Instalar PostgreSQL client para pg_dump (backups manuales de BD)
+# WHY: El endpoint de backup ejecuta pg_dump via ProcessBuilder para generar
+#      un dump completo de la base de datos y subirlo a Supabase Storage.
+RUN apk add --no-cache postgresql-client
+
 # Crear usuario no-root para seguridad
 # WHAT: Usuario 'cloudrun' con UID 1001, sin privilegios de root
 # WHY: Cloud Run recomienda no-root por seguridad. Si un atacante explota la app,

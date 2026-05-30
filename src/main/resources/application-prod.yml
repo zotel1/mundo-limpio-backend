@@ -53,3 +53,14 @@ spring:
     # WHY: Supabase ya tiene V1-V5 aplicadas. V6 (email support) y V7 son las
     #      unicas que necesitan ejecutarse en el primer deploy a Render.
     baseline-version: 5
+
+# ============================================================
+# BACKUP CONFIGURATION
+# WHAT: Configuracion para backups manuales de base de datos
+# WHY: El ADMIN ejecuta backups via endpoint REST; pg_dump necesita conexion
+#      directa a PostgreSQL (no PgBouncer, por eso db-direct-port separado).
+# ============================================================
+app:
+  backup:
+    bucket: ${BACKUP_BUCKET:backups}
+    db-direct-port: ${PGDIRECTPORT:5432}
