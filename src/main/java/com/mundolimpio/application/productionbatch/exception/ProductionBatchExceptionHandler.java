@@ -1,5 +1,7 @@
 package com.mundolimpio.application.productionbatch.exception;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +16,7 @@ import java.util.Map;
  * Usamos @RestControllerAdvice para que funcione como @ResponseBody.
  */
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class ProductionBatchExceptionHandler {
 
     @ExceptionHandler(ProductionBatchNotFoundException.class)
