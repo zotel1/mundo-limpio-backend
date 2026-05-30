@@ -23,6 +23,8 @@ import java.util.zip.GZIPOutputStream;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 /**
  * WHAT: Servicio principal de backups de base de datos.
@@ -186,13 +188,13 @@ public class BackupService {
     }
 
     /**
-     * WHAT: Lista todos los backups ordenados por fecha descendente (BKP-002).
+     * WHAT: Lista todos los backups con paginación (BKP-002).
+     * El ordenamiento se define via @PageableDefault en el controller.
      */
     @Transactional(readOnly = true)
-    public List<BackupResponse> getAllBackups() {
-        return repository.findAllByOrderByCreatedAtDesc().stream()
-                .map(b -> toResponse(b, publicBaseUrl + "/" + backupBucket + "/" + b.getS3Key()))
-                .collect(Collectors.toList());
+    public Page<BackupResponse> getAllBackups(Pageable pageable) {
+        return repository.findAll(pageable)
+                .map(b -> toResponse(b, publicBaseUrl + "/" + backupBucket + "/" + b.getS3Key()));
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.mundolimpio.application.product.repository;
 
 import com.mundolimpio.application.product.domain.Product;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,4 +17,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsBySku(String sku);
 
     List<Product> findByActiveTrue();
+
+    Page<Product> findByActiveTrue(Pageable pageable);
 }

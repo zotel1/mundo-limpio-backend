@@ -10,6 +10,8 @@ import com.mundolimpio.application.sales.dto.SaleResponse;
 import com.mundolimpio.application.sales.mapper.SaleMapper;
 import com.mundolimpio.application.sales.repository.SaleItemRepository;
 import com.mundolimpio.application.sales.repository.SaleRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -231,15 +233,15 @@ public class SaleService {
     // La anotación a nivel de clase no existe, así que la ponemos por método.
 
     /**
-     * Obtiene todas las ventas. Sin paginación por ahora (MVP).
-     * 
-     * @return Lista de SaleResponse con todas las ventas
+     * Obtiene todas las ventas con paginación.
+     *
+     * @param pageable Paginación y ordenamiento (default: sort by createdAt DESC)
+     * @return Página de SaleResponse con todas las ventas
      */
     @Transactional(readOnly = true)
-    public List<SaleResponse> findAll() {
-        return saleRepository.findAll().stream()
-                .map(saleMapper::toResponse)
-                .toList();
+    public Page<SaleResponse> findAll(Pageable pageable) {
+        return saleRepository.findAll(pageable)
+                .map(saleMapper::toResponse);
     }
 
     /**

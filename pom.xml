@@ -105,6 +105,15 @@
 			<artifactId>tess4j</artifactId>
 			<version>5.13.0</version>
 		</dependency>
+		<!-- Rate limiting (bucket4j) -->
+		<!-- WHAT: bucket4j — token bucket algorithm server-side para rate limiting -->
+		<!-- WHY: Proteger endpoints públicos (auth) de abusos y bruteforce.
+		     Cada IP tiene su propio bucket con tokens que se regeneran con el tiempo. -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>8.7.0</version>
+		</dependency>
 		<!-- WHAT: AWS S3 SDK v2 — cliente S3-compatible para Supabase Storage -->
 		<!-- WHY: Supabase Storage expone API S3-compatible; mismo cliente funciona con AWS S3 sin cambios -->
 		<!-- DIFFERENCES: Usamos la API síncrona simple (S3Client) en vez del async (S3AsyncClient) -->

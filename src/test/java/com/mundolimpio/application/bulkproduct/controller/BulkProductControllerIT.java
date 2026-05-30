@@ -113,16 +113,17 @@ class BulkProductControllerIT extends AbstractIntegrationTest {
         restTemplate.exchange("/api/v1/bulk-products/" + id1, HttpMethod.DELETE, getRequestEntity(null), Void.class);
 
         // GET default debe retornar solo activos (1)
-        ResponseEntity<List> response = restTemplate.exchange(
+        ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/v1/bulk-products",
                 HttpMethod.GET,
                 getRequestEntity(null),
-                List.class
+                Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(1, response.getBody().size());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertEquals(1, content.size());
     }
 
     @Test
@@ -150,16 +151,17 @@ class BulkProductControllerIT extends AbstractIntegrationTest {
         restTemplate.exchange("/api/v1/bulk-products/" + id1, HttpMethod.DELETE, getRequestEntity(null), Void.class);
 
         // GET /all debe retornar todos (3)
-        ResponseEntity<List> response = restTemplate.exchange(
+        ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/v1/bulk-products/all",
                 HttpMethod.GET,
                 getRequestEntity(null),
-                List.class
+                Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(3, response.getBody().size());
+        List<Map<String, Object>> allContent = (List<Map<String, Object>>) response.getBody().get("content");
+        assertEquals(3, allContent.size());
     }
 
     @Test

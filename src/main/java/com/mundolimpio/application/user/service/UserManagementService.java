@@ -9,10 +9,11 @@ import com.mundolimpio.application.user.exception.UserNotFoundException;
 import com.mundolimpio.application.user.mapper.UserMapper;
 import com.mundolimpio.application.user.repository.UserRepository;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -63,23 +64,14 @@ public class UserManagementService {
     // ======================== QUERY METHODS ========================
 
     /**
-     * Obtiene todos los usuarios del sistema.
+     * Obtiene todos los usuarios del sistema con paginación.
      *
-     * QUE HACE: Consulta todos los usuarios vía findAll() de JpaRepository
-     * y mapea cada User a UserResponse. Nunca retorna null (si no hay
-     * usuarios, retorna lista vacía).
-     *
-     * @return Lista de UserResponse (nunca null)
+     * @param pageable Paginación y ordenamiento (default: sort by createdAt DESC)
+     * @return Página de UserResponse (nunca null)
      */
-    public List<UserResponse> findAll() {
-        // POR QUE stream().map().toList(): convertimos la lista de entidades
-        // JPA a DTOs de respuesta. toList() retorna lista inmutable.
-        // Si no hay usuarios, findAll() retorna lista vacía y el stream
-        // simplemente no itera → retorna lista vacía (no null).
-        return userRepository.findAll()
-                .stream()
-                .map(userMapper::toResponse)
-                .toList();
+    public Page<UserResponse> findAll(Pageable pageable) {
+        return userRepository.findAll(pageable)
+                .map(userMapper::toResponse);
     }
 
     /**

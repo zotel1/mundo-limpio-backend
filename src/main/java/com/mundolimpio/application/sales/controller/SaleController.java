@@ -8,12 +8,15 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.NoSuchElementException;
 
 /**
@@ -93,12 +96,13 @@ public class SaleController {
     // ========================= GET ALL =========================
 
     /**
-     * Lista todas las ventas.
+     * Lista todas las ventas con paginación.
      * 
-     * WHAT: Retorna lista de ventas sin paginación (MVP).
+     * WHAT: Retorna ventas paginadas.
      * WHY: HIGH-1 — ADMIN, SALES_CLERK y ACCOUNTANT necesitan consultar ventas.
      * 
-     * @return Lista de SaleResponse
+     * @param pageable Paginación y ordenamiento (default: sort by createdAt DESC)
+     * @return Página de SaleResponse
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SALES_CLERK', 'ACCOUNTANT')")
@@ -106,15 +110,16 @@ public class SaleController {
     // WHY: HIGH-1 — el contador necesita ver ventas para contabilidad
     @Operation(
             summary = "List all sales",
-            description = "Returns all sales. ADMIN, SALES_CLERK, and ACCOUNTANT can access."
+            description = "Returns a paginated list of sales. ADMIN, SALES_CLERK, and ACCOUNTANT can access."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "List of sales retrieved successfully"),
+            @ApiResponse(responseCode = "200", description = "Paginated list of sales retrieved successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized: no authentication token"),
             @ApiResponse(responseCode = "403", description = "Forbidden: insufficient role")
     })
-    public ResponseEntity<List<SaleResponse>> getAllSales() {
-        List<SaleResponse> sales = service.findAll();
+    public ResponseEntity<Page<SaleResponse>> getAllSales(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<SaleResponse> sales = service.findAll(pageable);
         return ResponseEntity.ok(sales);
     }
 
