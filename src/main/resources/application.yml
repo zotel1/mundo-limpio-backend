@@ -39,3 +39,11 @@ app:
     access-key: ${SUPABASE_ACCESS_KEY:}
     secret-key: ${SUPABASE_SECRET_KEY:}
     region: ${SUPABASE_REGION:us-east-1}
+  # WHAT: Configuración de rate limiting para proteger la API de abusos.
+  # WHY: Sin límites, un atacante puede bruteforcear login o saturar el servidor.
+  #      Los límites se definen por IP; se recargan automáticamente.
+  rate-limit:
+    auth-max-requests: 10      # Intentos máximos por minuto en /auth/**
+    auth-time-window-minutes: 1
+    default-max-requests: 100   # Requests máximos por minuto en el resto
+    default-time-window-minutes: 1
