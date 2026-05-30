@@ -153,8 +153,11 @@ public class ReceiptController {
             @Valid @RequestBody ReceiptConfirmRequest request) {
 
         // Obtener el User autenticado del SecurityContext
-        User admin = (User) SecurityContextHolder.getContext()
+        Object principal = SecurityContextHolder.getContext()
                 .getAuthentication().getPrincipal();
+        if (!(principal instanceof User admin)) {
+            throw new IllegalStateException("Authenticated principal is not a User");
+        }
 
         PurchaseResponse response = confirmationService.confirm(request, admin);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
