@@ -74,6 +74,9 @@ public class ProductController {
      * @return ProductResponse con los datos del producto (200 OK)
      */
     @GetMapping("/{id}")
+    @PreAuthorize("permitAll()")
+    // WHAT: Endpoint publico de consulta por ID
+    // WHY: Cualquier usuario (autenticado o no) puede ver productos individuales
     @Operation(
             summary = "Get product by ID",
             description = "Retrieves a product using its unique identifier (ID)"
@@ -94,6 +97,9 @@ public class ProductController {
      * @return ProductResponse con los datos del producto (200 OK)
      */
     @GetMapping("/sku/{sku}")
+    @PreAuthorize("permitAll()")
+    // WHAT: Endpoint publico de consulta por SKU
+    // WHY: Cualquier usuario puede consultar productos por SKU (frontend lo necesita sin auth)
     @Operation(
             summary = "Get product by SKU",
             description = "Retrieves a product using its unique SKU (Stock Keeping Unit)"
@@ -113,6 +119,9 @@ public class ProductController {
      * @return Lista de ProductResponse con productos activos (200 OK)
      */
     @GetMapping
+    @PreAuthorize("permitAll()")
+    // WHAT: Endpoint publico para listar productos activos
+    // WHY: El frontend necesita listar productos activos sin autenticacion (pantalla de ventas)
     @Operation(
             summary = "Get all active products",
             description = "Retrieves a list of all active products (active=true). " +
@@ -130,6 +139,11 @@ public class ProductController {
      * @return Lista de ProductResponse con todos los productos (200 OK)
      */
     @GetMapping("/all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER')")
+    // WHAT: Endpoint protegido — solo ADMIN y STOCK_MANAGER pueden ver productos inactivos
+    // WHY: El wildcard GET /api/v1/products/** en SecurityConfig exponia este endpoint sin auth
+    // DIFFERENCES: Los endpoints GET publicos (/products, /products/{id}, /products/sku/{sku})
+    //              mantienen @PreAuthorize("permitAll()") explicito para claridad.
     @Operation(
             summary = "Get all products (active and inactive)",
             description = "Retrieves a complete list of all products, including inactive ones. " +
