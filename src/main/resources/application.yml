@@ -8,8 +8,8 @@ application:
 
   security:
     jwt:
-      secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
-      expiration: 86400000 # 24 horas en milisegundos
+      secret-key: ${JWT_SECRET_KEY}  # Sin fallback — Spring falla al arrancar si falta
+      expiration: 1800000 # 30 minutos en milisegundos
       refresh-expiration: 604800000 # 7 dias (para refresh tokens)
       #algorithm: HS256 # Algoritmo explicito
 
