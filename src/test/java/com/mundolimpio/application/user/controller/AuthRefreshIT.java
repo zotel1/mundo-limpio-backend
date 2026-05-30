@@ -71,7 +71,7 @@ class AuthRefreshIT extends AbstractIntegrationTest {
     @Test
     void shouldRefreshTokenSuccessfully() {
         // ========== 1. Registrar un usuario ==========
-        RegisterRequest registerReq = new RegisterRequest("testuser@mundolimpio.com", "password123");
+        RegisterRequest registerReq = new RegisterRequest("testuser@mundolimpio.com", "Password123");
 
         ResponseEntity<LoginResponse> registerRes = restTemplate.postForEntity(
                 "/api/v1/auth/register",

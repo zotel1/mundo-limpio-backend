@@ -1,3 +1,13 @@
+# WHAT: Configuración JWT para tests — sin fallback en application.yml principal.
+# WHY: Fix de seguridad removió el fallback del secret-key. Los tests que cargan
+#      el contexto completo necesitan un valor explícito para JWT_SECRET_KEY.
+application:
+  security:
+    jwt:
+      secret-key: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      expiration: 1800000
+      refresh-expiration: 604800000
+
 spring:
   datasource:
     # WHAT: Placeholder — valores reales inyectados por @DynamicPropertySource desde Testcontainers

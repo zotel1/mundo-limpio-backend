@@ -41,7 +41,7 @@
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-			<version>2.0.2</version>
+			<version>2.6.0</version>
 		</dependency>
 		<!-- Development -->
 		<dependency>
@@ -222,6 +222,7 @@
 					</environmentVariables>
 					<systemPropertyVariables>
 						<docker.client.strategy>com.mundolimpio.config.Httpclient5TcpDockerClientProviderStrategy</docker.client.strategy>
+						<JWT_SECRET_KEY>404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970</JWT_SECRET_KEY>
 					</systemPropertyVariables>
 				</configuration>
 			</plugin>
