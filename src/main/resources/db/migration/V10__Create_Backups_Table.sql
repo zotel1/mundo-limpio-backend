@@ -1,0 +1,19 @@
+-- V10__Create_Backups_Table.sql
+-- WHAT: Crear tabla de backups para almacenar metadata de backups de BD
+-- WHY: Los backups se suben a Supabase Storage; esta tabla trackea que backups existen
+-- DIFFERENCES: No hay FK a users porque el backup trackea al admin via audit_log
+--              (el admin se obtiene del contexto de seguridad). La columna s3_key
+--              almacena el path completo incluyendo el prefijo "backups/".
+
+CREATE TABLE IF NOT EXISTS backups (
+    id BIGSERIAL PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL,
+    size BIGINT NOT NULL,
+    compressed_size BIGINT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED',
+    s3_key VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Indice para ordenar por fecha de creacion descendente (query principal)
+CREATE INDEX IF NOT EXISTS idx_backups_created_at ON backups(created_at DESC);
