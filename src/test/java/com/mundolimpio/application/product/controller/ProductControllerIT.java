@@ -252,7 +252,10 @@ class ProductControllerIT extends AbstractIntegrationTest {
 
         HttpEntity<Void> deleteEntity = new HttpEntity<>(authHeaders(admin.token()));
         restTemplate.exchange("/api/v1/products/" + inactiveId, HttpMethod.DELETE, deleteEntity, Void.class);
-        ResponseEntity<List> response = restTemplate.getForEntity("/api/v1/products/all", List.class);
+        // WHAT: /all ahora requiere ADMIN o STOCK_MANAGER (sync-frontend-backend)
+        // WHY: El endpoint /all estaba expuesto sin auth via wildcard en SecurityConfig
+        HttpEntity<Void> getAllEntity = new HttpEntity<>(authHeaders(admin.token()));
+        ResponseEntity<List> response = restTemplate.exchange("/api/v1/products/all", HttpMethod.GET, getAllEntity, List.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(2, response.getBody().size());
