@@ -11,6 +11,8 @@ import com.mundolimpio.application.productionbatch.dto.ProductionBatchResponse;
 import com.mundolimpio.application.productionbatch.exception.ProductionBatchNotFoundException;
 import com.mundolimpio.application.productionbatch.mapper.ProductionBatchMapper;
 import com.mundolimpio.application.productionbatch.repository.ProductionBatchRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -117,12 +119,24 @@ public class ProductionBatchService {
     }
 
     /**
-     * Obtiene todos los lotes de un producto específico.
+     * Obtiene todos los lotes de un producto específico (sin paginación — usado por FIFO).
      */
     public List<ProductionBatchResponse> getBatchesByProductId(Long productId) {
         return repository.findByProductId(productId).stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    /**
+     * Obtiene todos los lotes de un producto específico con paginación.
+     *
+     * @param productId ID del producto
+     * @param pageable  Paginación y ordenamiento (default: sort by productionDate DESC)
+     * @return Página de ProductionBatchResponse
+     */
+    public Page<ProductionBatchResponse> getBatchesByProductId(Long productId, Pageable pageable) {
+        return repository.findByProductId(productId, pageable)
+                .map(mapper::toResponse);
     }
 
     /**
@@ -135,15 +149,15 @@ public class ProductionBatchService {
     }
 
     /**
-     * Obtiene todos los lotes de producción.
+     * Obtiene todos los lotes de producción con paginación.
      * Ordenados por fecha de producción descendente (nuevo primero).
      *
-     * @return lista de todos los lotes, vacía si no hay ninguno
+     * @param pageable Paginación y ordenamiento (default: sort by productionDate DESC)
+     * @return Página de lotes
      */
-    public List<ProductionBatchResponse> getAllProductionBatches() {
-        return repository.findAll(Sort.by(Sort.Direction.DESC, "productionDate")).stream()
-                .map(mapper::toResponse)
-                .toList();
+    public Page<ProductionBatchResponse> getAllProductionBatches(Pageable pageable) {
+        return repository.findAll(pageable)
+                .map(mapper::toResponse);
     }
 
     /**

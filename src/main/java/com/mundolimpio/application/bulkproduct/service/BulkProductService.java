@@ -8,10 +8,10 @@ import com.mundolimpio.application.bulkproduct.mapper.BulkProductMapper;
 import com.mundolimpio.application.bulkproduct.repository.BulkProductRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 /**
  * BulkProductService contiene la lógica de negocio para el módulo de materia prima.
@@ -67,34 +67,32 @@ public class BulkProductService {
     /**
      * Obtiene todas las materias primas activas.
      *
-     * @return Lista de BulkProductResponse de materias primas activas
+     * @param pageable Paginación y ordenamiento (default: sort by id DESC)
+     * @return Página de BulkProductResponse de materias primas activas
      */
-    public List<BulkProductResponse> getAllBulkProducts() {
-        logger.info("Fetching all active bulk products");
+    public Page<BulkProductResponse> getAllBulkProducts(Pageable pageable) {
+        logger.info("Fetching active bulk products - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
 
-        List<BulkProductResponse> activeProducts = repository.findByActiveTrue()
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        Page<BulkProductResponse> activeProducts = repository.findByActiveTrue(pageable)
+                .map(mapper::toResponse);
 
-        logger.info("Found {} active bulk products", activeProducts.size());
+        logger.info("Found {} active bulk products (total: {})", activeProducts.getNumberOfElements(), activeProducts.getTotalElements());
         return activeProducts;
     }
 
     /**
      * Obtiene todas las materias primas (activas e inactivas).
      *
-     * @return Lista de todos los BulkProductResponse
+     * @param pageable Paginación y ordenamiento (default: sort by id DESC)
+     * @return Página de todos los BulkProductResponse
      */
-    public List<BulkProductResponse> getAllBulkProductsAdmin() {
-        logger.info("Fetching all bulk products (active and inactive)");
+    public Page<BulkProductResponse> getAllBulkProductsAdmin(Pageable pageable) {
+        logger.info("Fetching all bulk products - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
 
-        List<BulkProductResponse> allProducts = repository.findAll()
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        Page<BulkProductResponse> allProducts = repository.findAll(pageable)
+                .map(mapper::toResponse);
 
-        logger.info("Found {} total bulk products", allProducts.size());
+        logger.info("Found {} bulk products (total: {})", allProducts.getNumberOfElements(), allProducts.getTotalElements());
         return allProducts;
     }
 

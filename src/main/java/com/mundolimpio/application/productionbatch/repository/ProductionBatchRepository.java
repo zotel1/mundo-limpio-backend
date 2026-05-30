@@ -1,6 +1,8 @@
 package com.mundolimpio.application.productionbatch.repository;
 
 import com.mundolimpio.application.productionbatch.domain.ProductionBatch;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -21,4 +23,9 @@ public interface ProductionBatchRepository extends JpaRepository<ProductionBatch
      * Obtiene todos los lotes de un producto.
      */
     List<ProductionBatch> findByProductId(Long productId);
+
+    /**
+     * Pagination: obtiene lotes de un producto con paginación.
+     */
+    Page<ProductionBatch> findByProductId(Long productId, Pageable pageable);
 }

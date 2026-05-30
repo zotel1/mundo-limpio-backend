@@ -8,12 +8,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * BulkProductController expone los endpoints para la gestión de materia prima.
@@ -66,7 +68,7 @@ public class BulkProductController {
     // ========================= READ =========================
 
     /**
-     * Obtiene todas las materias primas activas.
+     * Obtiene todas las materias primas activas con paginación.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'PRODUCTION_OP')")
@@ -74,28 +76,30 @@ public class BulkProductController {
     // WHY: STOCK_MANAGER gestiona inventario; PRODUCTION_OP necesita ver materia prima disponible
     @Operation(
             summary = "Get all active bulk products",
-            description = "Retrieves a list of all active raw materials (active=true). ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access. " +
+            description = "Retrieves a paginated list of all active raw materials (active=true). ADMIN, STOCK_MANAGER, and PRODUCTION_OP can access. " +
                     "Useful for administrative purposes and reporting."
     )
-    @ApiResponse(responseCode = "200", description = "List of active bulk products")
-    public ResponseEntity<List<BulkProductResponse>> getAllBulkProducts() {
-        return ResponseEntity.ok(service.getAllBulkProducts());
+    @ApiResponse(responseCode = "200", description = "Paginated list of active bulk products")
+    public ResponseEntity<Page<BulkProductResponse>> getAllBulkProducts(
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(service.getAllBulkProducts(pageable));
     }
 
     /**
-     * Obtiene todas las materias primas (activas e inactivas).
+     * Obtiene todas las materias primas (activas e inactivas) con paginación.
      */
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK_MANAGER', 'PRODUCTION_OP')")
     // WHAT: Lectura completa (activos e inactivos) para los mismos roles que GET /
     @Operation(
             summary = "Get all bulk products (active and inactive)",
-            description = "Retrieves a complete list of all raw materials, including inactive ones. " +
+            description = "Retrieves a paginated list of all raw materials, including inactive ones. " +
                     "Useful for administrative purposes and reporting."
     )
-    @ApiResponse(responseCode = "200", description = "Complete list of all bulk products")
-    public ResponseEntity<List<BulkProductResponse>> getAllBulkProductsAdmin() {
-        return ResponseEntity.ok(service.getAllBulkProductsAdmin());
+    @ApiResponse(responseCode = "200", description = "Paginated list of all bulk products")
+    public ResponseEntity<Page<BulkProductResponse>> getAllBulkProductsAdmin(
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(service.getAllBulkProductsAdmin(pageable));
     }
 
     /**

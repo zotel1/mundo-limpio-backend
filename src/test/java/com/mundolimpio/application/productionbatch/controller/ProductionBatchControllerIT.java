@@ -127,19 +127,18 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
         productionBatchRepository.save(batch3);
 
         // Obtener todos los lotes
-        ResponseEntity<List> response = restTemplate.exchange(
+        ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/v1/production-batches",
                 HttpMethod.GET,
                 getRequestEntity(null),
-                List.class
+                Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(3, response.getBody().size());
-
-        // Verificar orden: nuevo primero (DESC por productionDate)
-        List<Map<String, Object>> batches = response.getBody();
+        List<Map<String, Object>> batches = (List<Map<String, Object>>) response.getBody().get("content");
+        assertNotNull(batches);
+        assertEquals(3, batches.size());
         assertNotNull(batches);
         String date0 = (String) batches.get(0).get("productionDate");
         String date1 = (String) batches.get(1).get("productionDate");
@@ -154,16 +153,17 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
 
     @Test
     void shouldGetAllBatches_EmptyList() {
-        ResponseEntity<List> response = restTemplate.exchange(
+        ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/v1/production-batches",
                 HttpMethod.GET,
                 getRequestEntity(null),
-                List.class
+                Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertTrue(response.getBody().isEmpty());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertTrue(content.isEmpty());
     }
 
     @Test
@@ -265,16 +265,17 @@ class ProductionBatchControllerIT extends AbstractIntegrationTest {
                 getRequestEntity(request2), ProductionBatchResponse.class);
 
         // Obtener lotes
-        ResponseEntity<List> response = restTemplate.exchange(
+        ResponseEntity<Map> response = restTemplate.exchange(
                 "/api/v1/production-batches/product/" + savedProduct.getId(),
                 HttpMethod.GET,
                 getRequestEntity(null),
-                List.class
+                Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(2, response.getBody().size());
+        List<Map<String, Object>> content = (List<Map<String, Object>>) response.getBody().get("content");
+        assertEquals(2, content.size());
     }
 
     @Test

@@ -9,10 +9,10 @@ import com.mundolimpio.application.product.mapper.ProductMapper;
 import com.mundolimpio.application.product.repository.ProductRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 /**
  * ProductService contiene la lógica de negocio para el módulo de productos.
@@ -125,34 +125,32 @@ public class ProductService {
      * Obtiene todos los productos activos.
      * Útil para listados, reportes e inventario FIFO.
      *
-     * @return Lista de ProductResponse de productos activos
+     * @param pageable Paginación y ordenamiento (default: sort by id DESC)
+     * @return Página de ProductResponse de productos activos
      */
-    public List<ProductResponse> getAllActiveProducts() {
-        logger.info("Fetching all active products");
+    public Page<ProductResponse> getAllActiveProducts(Pageable pageable) {
+        logger.info("Fetching active products - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
 
-        List<ProductResponse> activeProducts = productRepository.findByActiveTrue()
-                .stream()
-                .map(productMapper::toResponse)
-                .toList();
+        Page<ProductResponse> activeProducts = productRepository.findByActiveTrue(pageable)
+                .map(productMapper::toResponse);
 
-        logger.info("Found {} active products", activeProducts.size());
+        logger.info("Found {} active products (total: {})", activeProducts.getNumberOfElements(), activeProducts.getTotalElements());
         return activeProducts;
     }
 
     /**
      * Obtiene todos los productos (activos e inactivos).
      *
-     * @return Lista de todos los ProductResponse
+     * @param pageable Paginación y ordenamiento (default: sort by id DESC)
+     * @return Página de todos los ProductResponse
      */
-    public List<ProductResponse> getAllProducts() {
-        logger.info("Fetching all products (active and inactive)");
+    public Page<ProductResponse> getAllProducts(Pageable pageable) {
+        logger.info("Fetching all products - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
 
-        List<ProductResponse> allProducts = productRepository.findAll()
-                .stream()
-                .map(productMapper::toResponse)
-                .toList();
+        Page<ProductResponse> allProducts = productRepository.findAll(pageable)
+                .map(productMapper::toResponse);
 
-        logger.info("Found {} total products", allProducts.size());
+        logger.info("Found {} products (total: {})", allProducts.getNumberOfElements(), allProducts.getTotalElements());
         return allProducts;
     }
 

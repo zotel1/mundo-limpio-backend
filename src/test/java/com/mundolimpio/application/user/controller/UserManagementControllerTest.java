@@ -24,6 +24,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -87,27 +92,28 @@ class UserManagementControllerTest extends AbstractIntegrationTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void findAll_AsAdmin_Returns200WithUserList() throws Exception {
-        // Given: el servicio retorna una lista con 2 usuarios
+        // Given: el servicio retorna una pagina con 2 usuarios
         List<UserResponse> mockUsers = List.of(
                 new UserResponse(1L, "admin", "admin@mundolimpio.com", "ADMIN", Instant.now(), List.of("ADMIN")),
                 new UserResponse(2L, "operator", "operator@mundolimpio.com", "SALES_CLERK", Instant.now(), List.of("SALES_CLERK"))
         );
+        Page<UserResponse> mockPage = new PageImpl<>(mockUsers, PageRequest.of(0, 20), 2);
 
-        when(userManagementService.findAll()).thenReturn(mockUsers);
+        when(userManagementService.findAll(any(Pageable.class))).thenReturn(mockPage);
 
-        // When/Then: GET /api/v1/users → 200 OK con array de 2 usuarios
+        // When/Then: GET /api/v1/users → 200 OK con pagina de 2 usuarios
         mockMvc.perform(get("/api/v1/users"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].id").value(1))
-                .andExpect(jsonPath("$[0].username").value("admin"))
-                .andExpect(jsonPath("$[0].email").value("admin@mundolimpio.com"))
-                .andExpect(jsonPath("$[0].role").value("ADMIN"))
-                .andExpect(jsonPath("$[1].id").value(2))
-                .andExpect(jsonPath("$[1].username").value("operator"))
-                .andExpect(jsonPath("$[1].email").value("operator@mundolimpio.com"))
-                .andExpect(jsonPath("$[1].role").value("SALES_CLERK"));
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.content[0].id").value(1))
+                .andExpect(jsonPath("$.content[0].username").value("admin"))
+                .andExpect(jsonPath("$.content[0].email").value("admin@mundolimpio.com"))
+                .andExpect(jsonPath("$.content[0].role").value("ADMIN"))
+                .andExpect(jsonPath("$.content[1].id").value(2))
+                .andExpect(jsonPath("$.content[1].username").value("operator"))
+                .andExpect(jsonPath("$.content[1].email").value("operator@mundolimpio.com"))
+                .andExpect(jsonPath("$.content[1].role").value("SALES_CLERK"));
     }
 
     /**

@@ -13,11 +13,12 @@ import com.mundolimpio.application.receipt.repository.SupplierRepository;
 import com.mundolimpio.application.user.domain.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 /**
  * WHAT: Servicio que orquesta el flujo de confirmación de una compra.
@@ -68,15 +69,15 @@ public class ReceiptConfirmationService {
     // de clase porque estas operaciones son de solo lectura.
 
     /**
-     * Obtiene todas las compras (purchases). Sin paginación por ahora (MVP).
-     * 
-     * @return Lista de PurchaseResponse con todas las compras
+     * Obtiene todas las compras (purchases) con paginación.
+     *
+     * @param pageable Paginación y ordenamiento (default: sort by purchaseDate DESC)
+     * @return Página de PurchaseResponse con todas las compras
      */
     @Transactional(readOnly = true)
-    public List<PurchaseResponse> findAll() {
-        return purchaseRepository.findAll().stream()
-                .map(mapper::toResponse)
-                .toList();
+    public Page<PurchaseResponse> findAll(Pageable pageable) {
+        return purchaseRepository.findAll(pageable)
+                .map(mapper::toResponse);
     }
 
     /**

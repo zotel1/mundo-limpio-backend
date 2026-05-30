@@ -33,6 +33,11 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -111,8 +116,12 @@ class RbacRoleBasedAccessTest extends AbstractIntegrationTest {
     }
 
     private void mockBulkProductGet() {
-        when(bulkProductService.getAllBulkProducts())
-                .thenReturn(List.of(new BulkProductResponse(1L, "Test Bulk", BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, true)));
+        Pageable pageable = PageRequest.of(0, 20);
+        List<BulkProductResponse> items = List.of(
+                new BulkProductResponse(1L, "Test Bulk", BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE, true));
+        Page<BulkProductResponse> page = new PageImpl<>(items, pageable, items.size());
+        when(bulkProductService.getAllBulkProducts(any(Pageable.class)))
+                .thenReturn(page);
     }
 
     private void mockInventoryGet() {

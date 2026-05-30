@@ -21,6 +21,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -97,27 +102,29 @@ class UserManagementServiceTest {
     @Test
     void findAll_WithTwoUsers_ReturnsListWithTwoEntries() {
         // Given: dos usuarios en la BD
+        Pageable pageable = PageRequest.of(0, 20);
         List<User> users = List.of(userAdmin, userOperator);
-        when(userRepository.findAll()).thenReturn(users);
+        Page<User> userPage = new PageImpl<>(users, pageable, 2);
+        when(userRepository.findAll(any(Pageable.class))).thenReturn(userPage);
         when(userMapper.toResponse(userAdmin)).thenReturn(userAdminResponse);
         when(userMapper.toResponse(userOperator)).thenReturn(userOperatorResponse);
 
         // When: consultamos todos los usuarios
-        List<UserResponse> result = userManagementService.findAll();
+        Page<UserResponse> result = userManagementService.findAll(pageable);
 
-        // Then: debe retornar una lista con 2 elementos
-        assertNotNull(result, "La lista no debe ser null");
-        assertEquals(2, result.size(), "Debe haber 2 usuarios");
-        assertEquals(1L, result.get(0).id());
-        assertEquals("admin", result.get(0).username());
-        assertEquals("admin@mundolimpio.com", result.get(0).email());
-        assertEquals("ADMIN", result.get(0).role());
-        assertEquals(2L, result.get(1).id());
-        assertEquals("operator", result.get(1).username());
-        assertEquals("operator@mundolimpio.com", result.get(1).email());
-        assertEquals("SALES_CLERK", result.get(1).role());
+        // Then: debe retornar una página con 2 elementos
+        assertNotNull(result, "La página no debe ser null");
+        assertEquals(2, result.getContent().size(), "Debe haber 2 usuarios");
+        assertEquals(1L, result.getContent().get(0).id());
+        assertEquals("admin", result.getContent().get(0).username());
+        assertEquals("admin@mundolimpio.com", result.getContent().get(0).email());
+        assertEquals("ADMIN", result.getContent().get(0).role());
+        assertEquals(2L, result.getContent().get(1).id());
+        assertEquals("operator", result.getContent().get(1).username());
+        assertEquals("operator@mundolimpio.com", result.getContent().get(1).email());
+        assertEquals("SALES_CLERK", result.getContent().get(1).role());
 
-        verify(userRepository).findAll();
+        verify(userRepository).findAll(any(Pageable.class));
         verify(userMapper).toResponse(userAdmin);
         verify(userMapper).toResponse(userOperator);
         verifyNoMoreInteractions(userRepository, userMapper);
@@ -134,16 +141,18 @@ class UserManagementServiceTest {
     @Test
     void findAll_WithNoUsers_ReturnsEmptyList() {
         // Given: ningún usuario en la BD
-        when(userRepository.findAll()).thenReturn(List.of());
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<User> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+        when(userRepository.findAll(any(Pageable.class))).thenReturn(emptyPage);
 
         // When: consultamos todos los usuarios
-        List<UserResponse> result = userManagementService.findAll();
+        Page<UserResponse> result = userManagementService.findAll(pageable);
 
-        // Then: debe retornar lista vacía (NO null)
-        assertNotNull(result, "La lista no debe ser null cuando no hay usuarios");
-        assertTrue(result.isEmpty(), "La lista debe estar vacía");
+        // Then: debe retornar página vacía (NO null)
+        assertNotNull(result, "La página no debe ser null cuando no hay usuarios");
+        assertTrue(result.getContent().isEmpty(), "La página debe estar vacía");
 
-        verify(userRepository).findAll();
+        verify(userRepository).findAll(any(Pageable.class));
         verifyNoInteractions(userMapper);
     }
 
