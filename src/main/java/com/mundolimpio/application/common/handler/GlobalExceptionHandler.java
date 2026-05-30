@@ -20,6 +20,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
@@ -36,6 +39,8 @@ import java.util.stream.Collectors;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /*Maneja ProductNotFoundException (404 - Not Found)
     * Se lanza cuandio se intenta obtener un producto que no existe.*/
@@ -242,9 +247,10 @@ public class GlobalExceptionHandler {
             Exception ex,
             WebRequest request
     ) {
+        log.error("Unexpected error", ex);
         ErrorResponse errorResponse = new ErrorResponse(
                 "INTERNAL_SERVER_ERROR",
-                "An unexpected error ocurred: " + ex.getMessage(),
+                "An unexpected error occurred. Please try again later.",
                 LocalDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
         );
