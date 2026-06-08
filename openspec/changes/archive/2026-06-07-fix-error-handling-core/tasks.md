@@ -38,3 +38,19 @@ Chain strategy: size-exception
 - [x] 3.1 `AuthControllerTest.java`: mock `authService.login()` → `BadCredentialsException`, POST `/api/v1/auth/login` → 401 + `INVALID_CREDENTIALS`
 - [x] 3.2 `AuthControllerTest.java`: POST `/api/v1/auth/register` con body malformado (`{"email": "test", "password":}`) → 400 + `MALFORMED_JSON` (Jackson falla antes de llegar al mock)
 - [x] 3.3 `AuthControllerTest.java`: mock `authService.register()` ok, POST con JSON válido → 201 (regresión)
+
+## Phase 4: PR2 — RateLimitFilter → ErrorResponse + Retry-After (Bloque B)
+
+- [x] 4.1 (RED) `RateLimitFilterTest.java`: test rate limit excedido → 429 + ErrorResponse (code, message, timestamp, path) + header Retry-After
+- [x] 4.2 (RED) `RateLimitFilterTest.java`: test request permitido → 200 + header X-Rate-Limit-Remaining
+- [x] 4.3 (RED) `RateLimitFilterTest.java`: test auth path usa authBucket
+- [x] 4.4 (RED) `RateLimitFilterTest.java`: test non-auth path usa defaultBucket
+- [x] 4.5 (GREEN) `RateLimitFilter.java`: inyectar ObjectMapper por constructor, reemplazar String JSON manual por objectMapper.writeValueAsString(new ErrorResponse(...))
+
+## Phase 5: PR2 — +4 HTTP handlers en GlobalExceptionHandler (Bloque D)
+
+- [x] 5.1 (RED) `GlobalExceptionHandlerTest.java`: test HttpRequestMethodNotSupportedException → 405 + METHOD_NOT_ALLOWED
+- [x] 5.2 (RED) `GlobalExceptionHandlerTest.java`: test HttpMediaTypeNotSupportedException → 415 + UNSUPPORTED_MEDIA_TYPE
+- [x] 5.3 (RED) `GlobalExceptionHandlerTest.java`: test MissingServletRequestParameterException → 400 + MISSING_PARAMETER
+- [x] 5.4 (RED) `GlobalExceptionHandlerTest.java`: test ConstraintViolationException → 400 + VALIDATION_ERROR
+- [x] 5.5 (GREEN) `GlobalExceptionHandler.java`: add handlers para HttpRequestMethodNotSupportedException, HttpMediaTypeNotSupportedException, MissingServletRequestParameterException, ConstraintViolationException (antes del catch-all)
