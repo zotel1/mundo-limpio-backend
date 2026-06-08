@@ -1,0 +1,17 @@
+# SDD State: fix/error-handling-core
+phase: archive
+status: completed
+completed_at: "2026-06-07T22:00:00-03:00"
+last_phase: archive
+git:
+  branch: fix/error-handling-core
+  merge_commit: abd1356
+  target: develop
+summary:
+  proposal: approved
+  spec: synced
+  design: approved
+  tasks: completed
+  apply: implemented
+  verify: passed
+  archive: completed
