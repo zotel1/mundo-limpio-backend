@@ -11,12 +11,16 @@ import com.mundolimpio.application.common.exception.ProductNotFoundException;
 import com.mundolimpio.application.inventory.exception.InventoryNotFoundException;
 import com.mundolimpio.application.inventory.exception.InvalidAdjustmentException;
 import com.mundolimpio.application.user.exception.UserNotFoundException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -286,6 +290,81 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = new ErrorResponse(
                 "MALFORMED_JSON",
                 "Invalid JSON format: " + ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    /*
+     * Maneja HttpRequestMethodNotSupportedException (405 - Method Not Allowed)
+     * Se lanza cuando se intenta acceder a un endpoint con un método HTTP no soportado.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleHttpRequestMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex,
+            WebRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "METHOD_NOT_ALLOWED",
+                "Método HTTP no soportado: " + ex.getMethod(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(errorResponse);
+    }
+
+    /*
+     * Maneja HttpMediaTypeNotSupportedException (415 - Unsupported Media Type)
+     * Se lanza cuando el Content-Type del request no es soportado por el endpoint.
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex,
+            WebRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "UNSUPPORTED_MEDIA_TYPE",
+                "Tipo de contenido no soportado: " + ex.getContentType(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(errorResponse);
+    }
+
+    /*
+     * Maneja MissingServletRequestParameterException (400 - Bad Request)
+     * Se lanza cuando falta un parámetro de request requerido.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingServletRequestParameter(
+            MissingServletRequestParameterException ex,
+            WebRequest request
+    ) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                "MISSING_PARAMETER",
+                "Required parameter '" + ex.getParameterName() + "' is missing",
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    /*
+     * Maneja ConstraintViolationException (400 - Bad Request)
+     * Se lanza cuando fallan validaciones de Jakarta Validation a nivel de parámetros.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(
+            ConstraintViolationException ex,
+            WebRequest request
+    ) {
+        String violations = ex.getConstraintViolations().stream()
+                .map(v -> v.getMessage())
+                .collect(Collectors.joining(", "));
+        ErrorResponse errorResponse = new ErrorResponse(
+                "VALIDATION_ERROR",
+                violations,
                 LocalDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
         );
