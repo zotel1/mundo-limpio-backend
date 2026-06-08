@@ -14,9 +14,7 @@ import com.mundolimpio.application.user.exception.UserNotFoundException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -238,58 +236,6 @@ public class GlobalExceptionHandler {
                 request.getDescription(false).replace("uri=", "")
         );
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
-    }
-
-    /*
-     * Maneja AuthenticationException (401 - Unauthorized).
-     *
-     * POR QUÉ este handler:
-     * - BadCredentialsException, DisabledException, LockedException,
-     *   CredentialsExpiredException, UsernameNotFoundException, etc. extienden
-     *   AuthenticationException y antes caían al catch-all → 500.
-     * - 401 es el status correcto: credenciales inválidas, usuario deshabilitado,
-     *   bloqueado, o con credenciales expiradas.
-     * - El mensaje genérico "Invalid email or password" evita leak de información
-     *   sobre si el email existe o no (protección contra user enumeration).
-     */
-    @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ErrorResponse> handleAuthenticationException(
-            AuthenticationException ex,
-            WebRequest request
-    ) {
-        log.warn("Authentication failed: {}", ex.getMessage());
-        ErrorResponse errorResponse = new ErrorResponse(
-                "INVALID_CREDENTIALS",
-                "Invalid email or password",
-                LocalDateTime.now(),
-                request.getDescription(false).replace("uri=", "")
-        );
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
-    }
-
-    /*
-     * Maneja HttpMessageNotReadableException (400 - Bad Request).
-     *
-     * POR QUÉ este handler:
-     * - Cuando Jackson no puede parsear el body JSON (malformado, truncado, etc.)
-     *   lanza HttpMessageNotReadableException.
-     * - Sin este handler, caía al catch-all → 500.
-     * - 400 es el status correcto: el request del cliente tiene formato inválido.
-     * - Incluimos el mensaje de Jackson para facilitar debugging.
-     */
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadable(
-            HttpMessageNotReadableException ex,
-            WebRequest request
-    ) {
-        log.warn("Malformed JSON: {}", ex.getMessage());
-        ErrorResponse errorResponse = new ErrorResponse(
-                "MALFORMED_JSON",
-                "Invalid JSON format: " + ex.getMessage(),
-                LocalDateTime.now(),
-                request.getDescription(false).replace("uri=", "")
-        );
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
     /*
