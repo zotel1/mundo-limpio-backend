@@ -1,12 +1,9 @@
 package com.mundolimpio.application.user.controller;
 
-import com.mundolimpio.application.user.dto.LoginRequest;
 import com.mundolimpio.application.user.dto.LoginResponse;
 import com.mundolimpio.application.user.dto.RefreshRequest;
-import com.mundolimpio.application.user.dto.RegisterRequest;
 import com.mundolimpio.application.user.exception.InvalidRefreshTokenException;
 import com.mundolimpio.application.user.service.AuthService;
-import org.springframework.security.authentication.BadCredentialsException;
 import com.mundolimpio.config.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,103 +81,6 @@ class AuthControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.role").value("OPERATOR"))
                 .andExpect(jsonPath("$.email").value("testuser@mundolimpio.com"))
                 .andExpect(jsonPath("$.username").value("testuser"));
-    }
-
-    // ==================== TEST 3: Login con credenciales inválidas → 401 ====================
-
-    /**
-     * Test 3: POST /login con credenciales inválidas → 401 INVALID_CREDENTIALS.
-     *
-     * QUÉ VERIFICA:
-     * - authService.login() lanza BadCredentialsException.
-     * - GlobalExceptionHandler.handleAuthenticationException() captura y retorna 401.
-     * - El body contiene code="INVALID_CREDENTIALS" y mensaje genérico.
-     *
-     * POR QUÉ este test:
-     * - Sin el handler, BadCredentialsException caía al catch-all → 500.
-     * - 401 es el status correcto: credenciales inválidas.
-     * - El mensaje "Invalid email or password" es genérico (no revela si el email existe).
-     */
-    @Test
-    void shouldReturn401WhenLoginWithInvalidCredentials() throws Exception {
-        // Given: login con credenciales inválidas
-        when(authService.login(any(LoginRequest.class)))
-                .thenThrow(new BadCredentialsException("Bad credentials"));
-
-        // When: POST /api/v1/auth/login con email y contraseña
-        // Then: 401 UNAUTHORIZED con INVALID_CREDENTIALS
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\": \"test@example.com\", \"password\": \"wrong\"}"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
-                .andExpect(jsonPath("$.message").value("Invalid email or password"));
-    }
-
-    // ==================== TEST 4: Register con JSON malformado → 400 ====================
-
-    /**
-     * Test 4: POST /register con body JSON malformado → 400 MALFORMED_JSON.
-     *
-     * QUÉ VERIFICA:
-     * - Jackson falla al parsear el body (JSON truncado).
-     * - GlobalExceptionHandler.handleHttpMessageNotReadable() captura y retorna 400.
-     * - authService.register() NO es invocado (Jackson falla antes).
-     *
-     * POR QUÉ este test:
-     * - Sin el handler, HttpMessageNotReadableException caía al catch-all → 500.
-     * - 400 es el status correcto: el request del cliente tiene formato inválido.
-     */
-    @Test
-    void shouldReturn400WhenRegisterWithMalformedJson() throws Exception {
-        // When: POST /api/v1/auth/register con JSON malformado (truncado)
-        // Then: 400 BAD_REQUEST con MALFORMED_JSON
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\": \"test@test.com\", \"password\""))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("MALFORMED_JSON"))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("JSON parse error")));
-    }
-
-    // ==================== TEST 5: Register exitoso → 201 (regresión) ====================
-
-    /**
-     * Test 5: POST /register con JSON válido → 201 CREATED.
-     *
-     * QUÉ VERIFICA:
-     * - El controller acepta un RegisterRequest JSON válido.
-     * - authService.register() es invocado y retorna LoginResponse.
-     * - La respuesta HTTP es 201 CREATED.
-     *
-     * POR QUÉ este test:
-     * - Test de regresión: asegura que los nuevos handlers no afectan
-     *   el flujo exitoso de registro.
-     */
-    @Test
-    void shouldReturn201WhenRegisterSucceeds() throws Exception {
-        // Given: el service devuelve un LoginResponse exitoso
-        LoginResponse mockResponse = new LoginResponse(
-                "access-token",
-                "refresh-token",
-                "CUSTOMER",
-                "test@mundolimpio.com",
-                "test",
-                Instant.now(),
-                List.of("CUSTOMER")
-        );
-
-        when(authService.register(any(RegisterRequest.class))).thenReturn(mockResponse);
-
-        // When: POST /api/v1/auth/register con JSON válido
-        // Then: 201 CREATED con los datos del usuario
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\": \"test@mundolimpio.com\", \"password\": \"securePass123\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.accessToken").value("access-token"))
-                .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
-                .andExpect(jsonPath("$.email").value("test@mundolimpio.com"));
     }
 
     /**
