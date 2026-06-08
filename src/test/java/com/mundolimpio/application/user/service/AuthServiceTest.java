@@ -377,6 +377,45 @@ class AuthServiceTest {
                 "El email debe ser el provisto en el request");
     }
 
+    // ==================== TEST 9: Login con usuario eliminado después de auth ====================
+
+    /**
+     * Test 9: login() lanza UsernameNotFoundException cuando findByEmail() retorna empty.
+     *
+     * WHAT: Verifica que si authenticationManager.authenticate() pasa (credenciales OK)
+     * pero el usuario fue eliminado entre la autenticación y la búsqueda por email,
+     * se lanza UsernameNotFoundException (no RuntimeException).
+     * WHY: UsernameNotFoundException extiende AuthenticationException y será capturado
+     * por el handler de AuthenticationException en GlobalExceptionHandler → 401
+     * (consistente con el flujo de credenciales inválidas).
+     */
+    @Test
+    void shouldThrowUsernameNotFoundExceptionWhenUserNotFoundAfterAuth() {
+        // Given: autenticación pasa pero el usuario ya no existe en la DB
+        LoginRequest request = new LoginRequest("test@mail.com", "password123");
+
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
+                .thenReturn(new UsernamePasswordAuthenticationToken("test@mail.com", "password123"));
+        when(userRepository.findByEmail("test@mail.com")).thenReturn(Optional.empty());
+
+        // When: login() → debe lanzar UsernameNotFoundException
+        UsernameNotFoundException exception = assertThrows(
+                UsernameNotFoundException.class,
+                () -> authService.login(request)
+        );
+
+        // Then: el mensaje debe contener el email del usuario
+        assertTrue(exception.getMessage().contains("test@mail.com"),
+                "El mensaje debe contener el email: " + exception.getMessage());
+        assertFalse(exception.getMessage().contains("RuntimeException"),
+                "No debe contener 'RuntimeException' en el mensaje");
+
+        // Verificar que se llamaron las dependencias correctas
+        verify(authenticationManager).authenticate(any(UsernamePasswordAuthenticationToken.class));
+        verify(userRepository).findByEmail("test@mail.com");
+        verifyNoInteractions(jwtService);
+    }
+
     // ==================== TEST 8: Login con email ====================
 
     /**
