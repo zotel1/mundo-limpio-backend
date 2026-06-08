@@ -1,5 +1,7 @@
 package com.mundolimpio.application.security.filter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mundolimpio.application.common.dto.ErrorResponse;
 import com.mundolimpio.application.security.config.RateLimitConfig;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
@@ -12,6 +14,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 
 /**
  * WHAT: Filtro de rate limiting que limita requests por IP.
@@ -29,9 +32,11 @@ public class RateLimitFilter implements Filter {
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
     private final RateLimitConfig rateLimitConfig;
+    private final ObjectMapper objectMapper;
 
-    public RateLimitFilter(RateLimitConfig rateLimitConfig) {
+    public RateLimitFilter(RateLimitConfig rateLimitConfig, ObjectMapper objectMapper) {
         this.rateLimitConfig = rateLimitConfig;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -72,11 +77,16 @@ public class RateLimitFilter implements Filter {
             response.setStatus(429);
             response.setHeader("Content-Type", "application/json");
             response.setHeader("Retry-After", String.valueOf(waitSeconds));
-            response.getWriter().write(
-                    "{\"code\":\"RATE_LIMIT_EXCEEDED\"," +
-                    "\"message\":\"Demasiadas requests. Intenta de nuevo en " + waitSeconds + " segundos.\"," +
-                    "\"retryAfterSeconds\":" + waitSeconds + "}"
+
+            String message = "Demasiadas requests. Intenta de nuevo en " + waitSeconds + " segundos.";
+            ErrorResponse errorResponse = new ErrorResponse(
+                    "RATE_LIMIT_EXCEEDED",
+                    message,
+                    LocalDateTime.now(),
+                    request.getRequestURI()
             );
+            String json = objectMapper.writeValueAsString(errorResponse);
+            response.getWriter().write(json);
         }
     }
 

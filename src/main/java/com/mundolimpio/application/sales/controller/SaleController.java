@@ -1,5 +1,6 @@
 package com.mundolimpio.application.sales.controller;
 
+import com.mundolimpio.application.common.dto.ErrorResponse;
 import com.mundolimpio.application.sales.dto.SaleRequest;
 import com.mundolimpio.application.sales.dto.SaleResponse;
 import com.mundolimpio.application.sales.service.SaleService;
@@ -17,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.NoSuchElementException;
 
 /**
@@ -146,12 +148,18 @@ public class SaleController {
             @ApiResponse(responseCode = "403", description = "Forbidden: insufficient role"),
             @ApiResponse(responseCode = "404", description = "Sale not found")
     })
-    public ResponseEntity<SaleResponse> getSaleById(@PathVariable Long id) {
+    public ResponseEntity<?> getSaleById(@PathVariable Long id) {
         try {
             SaleResponse response = service.findById(id);
             return ResponseEntity.ok(response);
         } catch (NoSuchElementException e) {
-            return ResponseEntity.notFound().build();
+            ErrorResponse error = new ErrorResponse(
+                    "SALE_NOT_FOUND",
+                    "Sale not found with id: " + id,
+                    LocalDateTime.now(),
+                    "/api/v1/sales/" + id
+            );
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
         }
     }
 }

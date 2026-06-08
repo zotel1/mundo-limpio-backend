@@ -1,5 +1,6 @@
 package com.mundolimpio.application.receipt.exception;
 
+import com.mundolimpio.application.common.dto.ErrorResponse;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -9,8 +10,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * WHAT: Manejador de excepciones para el módulo receipt.
@@ -20,10 +19,9 @@ import java.util.Map;
  *      tenga que conocer todas las excepciones de todos los módulos.
  * 
  * DIFFERENCES con BulkProductExceptionHandler:
- * - Este handler usa LinkedHashMap en vez de ErrorResponse para mantener consistencia
- *   con el patrón del módulo (el handler de bulkproduct también usa Map).
- * - Agrega el campo "path" para debugging (mismo formato que GlobalExceptionHandler).
- * - Usa 422 UNPROCESSABLE_ENTITY (no estándar en Spring, pero correcto para errores de OCR).
+ * - Este handler devuelve 422 UNPROCESSABLE_ENTITY (no estándar en Spring, pero correcto
+ *   para errores de OCR según RFC 4918).
+ * - BulkProductExceptionHandler devuelve 404 NOT_FOUND.
  */
 @ControllerAdvice(basePackages = "com.mundolimpio.application.receipt")
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -39,14 +37,15 @@ public class ReceiptExceptionHandler {
      * - Es el status correcto según RFC 4918 para errores semánticos de procesamiento.
      */
     @ExceptionHandler(OcrProcessingException.class)
-    public ResponseEntity<Map<String, Object>> handleOcrProcessingException(
+    public ResponseEntity<ErrorResponse> handleOcrProcessingException(
             OcrProcessingException ex, WebRequest request) {
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("code", "OCR_PROCESSING_ERROR");
-        body.put("message", ex.getMessage());
-        body.put("timestamp", LocalDateTime.now());
-        body.put("path", request.getDescription(false).replace("uri=", ""));
+        ErrorResponse body = new ErrorResponse(
+                "OCR_PROCESSING_ERROR",
+                ex.getMessage(),
+                LocalDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
 
         return new ResponseEntity<>(body, HttpStatus.UNPROCESSABLE_ENTITY);
     }
