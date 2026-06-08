@@ -1,12 +1,11 @@
 package com.mundolimpio.application.receipt.exception;
 
+import com.mundolimpio.application.common.dto.ErrorResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.ServletWebRequest;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -57,26 +56,27 @@ class ReceiptExceptionHandlerTest {
         ServletWebRequest request = new ServletWebRequest(new MockHttpServletRequest());
 
         // When
-        ResponseEntity<Map<String, Object>> response1 =
+        ResponseEntity<ErrorResponse> response1 =
                 handler.handleOcrProcessingException(ex1, request);
-        ResponseEntity<Map<String, Object>> response2 =
+        ResponseEntity<ErrorResponse> response2 =
                 handler.handleOcrProcessingException(ex2, request);
 
         // Then — status 422
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, response1.getStatusCode());
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, response2.getStatusCode());
 
-        // Then — body contiene los campos esperados
-        Map<String, Object> body1 = response1.getBody();
+        // Then — body es ErrorResponse con los campos esperados
+        ErrorResponse body1 = response1.getBody();
         assertNotNull(body1);
-        assertEquals("OCR_PROCESSING_ERROR", body1.get("code"));
-        assertEquals("No text detected", body1.get("message"));
-        assertNotNull(body1.get("timestamp"));
-        assertNotNull(body1.get("path"));
+        assertEquals("OCR_PROCESSING_ERROR", body1.code());
+        assertEquals("No text detected", body1.message());
+        assertNotNull(body1.timestamp());
+        assertNotNull(body1.path());
 
-        Map<String, Object> body2 = response2.getBody();
-        assertEquals("OCR_PROCESSING_ERROR", body2.get("code"));
-        assertEquals("Confidence too low", body2.get("message"));
+        ErrorResponse body2 = response2.getBody();
+        assertNotNull(body2);
+        assertEquals("OCR_PROCESSING_ERROR", body2.code());
+        assertEquals("Confidence too low", body2.message());
     }
 
     /**
@@ -89,11 +89,11 @@ class ReceiptExceptionHandlerTest {
         mockRequest.setRequestURI("/api/v1/receipts/process");
         ServletWebRequest request = new ServletWebRequest(mockRequest);
 
-        ResponseEntity<Map<String, Object>> response =
+        ResponseEntity<ErrorResponse> response =
                 handler.handleOcrProcessingException(ex, request);
 
-        Map<String, Object> body = response.getBody();
+        ErrorResponse body = response.getBody();
         assertNotNull(body);
-        assertEquals("/api/v1/receipts/process", body.get("path"));
+        assertEquals("/api/v1/receipts/process", body.path());
     }
 }
