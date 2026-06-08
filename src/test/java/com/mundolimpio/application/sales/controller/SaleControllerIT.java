@@ -28,6 +28,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -548,5 +549,31 @@ class SaleControllerIT extends AbstractIntegrationTest {
         assertThat(item.quantity())
                 .as("La cantidad fraccionaria debe preservarse como BigDecimal")
                 .isEqualByComparingTo(new BigDecimal("2.5"));
+    }
+
+    // ==================== TASK 4: GET /api/v1/sales/{id} not found → 404 with ErrorResponse ====================
+
+    /**
+     * Task 4 RED: GET /api/v1/sales/{id} con ID inexistente debe retornar 404
+     * con ErrorResponse body conteniendo SALE_NOT_FOUND y el ID en el mensaje.
+     */
+    @Test
+    void testGetSaleById_Returns404_WithErrorResponseBody() {
+        // When: GET a una venta que no existe
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/api/v1/sales/9999",
+                HttpMethod.GET,
+                createRequest(null, adminHeaders),
+                Map.class
+        );
+
+        // Then: 404 Not Found con ErrorResponse body
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("SALE_NOT_FOUND", response.getBody().get("code"));
+        assertTrue(response.getBody().get("message").toString().contains("9999"));
+        assertNotNull(response.getBody().get("timestamp"));
+        assertNotNull(response.getBody().get("path"));
+        assertTrue(response.getBody().get("path").toString().contains("/api/v1/sales/9999"));
     }
 }
